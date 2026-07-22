@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.mertmanav.ydtfocus",
-      "googleServicesFile": "./android/app/google-services.json",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0b0b0c",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -41,6 +41,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0361aa7a-9872-41f6-acb3-42534f8859fe"
+      }
+    },
+    "owner": "mertyazilim3"
   }
 }

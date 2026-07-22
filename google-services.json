@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "856274397620",
+    "project_id": "ydtfocus",
+    "storage_bucket": "ydtfocus.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:856274397620:android:6edb9e245d5dc1b2eceae1",
+        "android_client_info": {
+          "package_name": "com.mertmanav.ydtfocus"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "856274397620-pes760t0rgneuuu93ghbjc54fibm1km9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mertmanav.ydtfocus",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "856274397620-uauncvrncog4n3m7t1nebtceoq0903kf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANWFXjtkRjvCPViQec6pI_5L2y0X-etOk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "856274397620-uauncvrncog4n3m7t1nebtceoq0903kf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
