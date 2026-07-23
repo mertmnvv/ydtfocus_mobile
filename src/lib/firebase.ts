@@ -1,11 +1,13 @@
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
+// eslint-disable-next-line import/no-duplicates -- @ts-expect-error'ı izole etmek için ikinci import kasıtlı ayrı
 import { GoogleAuthProvider, initializeAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 // getReactNativePersistence sadece firebase/auth'un RN build'inde tipli;
 // Metro çalışma zamanında RN sürümünü çözümlüyor ama tsc her zaman browser
 // tiplerini görüyor, bu yüzden bu import ayrı tutulup type-check'ten muaf.
 // @ts-expect-error - RN build'inde mevcut, browser .d.ts'te tanımlı değil
+// eslint-disable-next-line import/no-duplicates -- @ts-expect-error'ı izole etmek için kasıtlı ayrı import
 import { getReactNativePersistence } from 'firebase/auth';
 
 // Web'deki ydtfocusv2/src/lib/firebase.js ile AYNI Firebase projesi
