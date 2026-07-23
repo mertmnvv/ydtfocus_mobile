@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(//c/Mert/ydtfocusv2/src/app/\\\\\\(app\\\\\\)/reading/**)",
+      "Read(//c/Mert/ydtfocusv2/src/app/api/wikipedia/**)"
+    ]
+  },
   "enabledPlugins": {
     "expo@claude-plugins-official": true
   }
