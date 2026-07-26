@@ -378,6 +378,12 @@ export type UserProfile = {
   // ile yapılıyor (bkz. _layout.tsx RootNavigator, level-test.tsx).
   level?: 'A2' | 'B1' | 'B2' | 'C1';
   levelSetAt?: string;
+  // Kullanıcının kendi belirlediği günlük çalışma hedefi (dakika) —
+  // "Kendi Hedef Belirleme" özelliği, streak'ten bağımsız. Ayarlar'dan
+  // seçilir (bkz. settings.tsx), Profil'de stats.dailyMinutes ile
+  // karşılaştırılıp ilerleme çubuğu gösterilir (bkz. profile.tsx).
+  // Kullanıcı seçmediyse tanımsız kalır, zorla varsayılan atanmaz.
+  dailyGoalMinutes?: number;
   [key: string]: unknown;
 };
 
@@ -423,6 +429,12 @@ export async function ensureUserProfile(
 // dinleyen AuthProvider sayesinde _layout.tsx buna otomatik tepki verir.
 export async function setUserLevel(uid: string, level: string) {
   await updateDoc(doc(db, 'users', uid), { level, levelSetAt: new Date().toISOString() });
+}
+
+// "Kendi Hedef Belirleme" — kullanıcının Ayarlar'dan seçtiği günlük
+// çalışma dakikası hedefi. setUserLevel ile aynı basit updateDoc deseni.
+export async function setDailyGoalMinutes(uid: string, minutes: number): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { dailyGoalMinutes: minutes });
 }
 
 // Web'deki useFcmToken.js / firestore.js updateFcmToken ile AYNI alan
