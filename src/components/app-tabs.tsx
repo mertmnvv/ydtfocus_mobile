@@ -1,3 +1,4 @@
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
@@ -28,24 +29,24 @@ export default function AppTabs() {
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Okuma</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          sf={{ default: 'book', selected: 'book.fill' }}
+          src={<NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="book-open-variant" />}
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="word-bank">
         <NativeTabs.Trigger.Label>Kelime Bankası</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'text.book.closed', selected: 'text.book.closed.fill' }}
+          src={<NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="book-alphabet" />}
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="profile">
         <NativeTabs.Trigger.Label>Profil</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }}
+          src={<NativeTabs.Trigger.VectorIcon family={MaterialCommunityIcons} name="account-circle" />}
         />
       </NativeTabs.Trigger>
     </NativeTabs>
