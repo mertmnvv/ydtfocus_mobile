@@ -89,7 +89,7 @@ export default function WordBankScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <ThemedText type="subtitle" style={styles.title}>
-            Kelime Bankam
+            Kelime Bankası
           </ThemedText>
         </View>
 
