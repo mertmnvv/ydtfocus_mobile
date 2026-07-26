@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProgressChart } from '@/components/progress-chart';
 import { SpinWheelModal } from '@/components/spin-wheel-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -10,11 +11,13 @@ import { LEVEL_INTERVALS } from '@/constants/srs';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import {
+  getRecentDailyStats,
   getWheelState,
   setExamDate,
   subscribeToLeaderboard,
   subscribeToUserStats,
   subscribeToUserWords,
+  type DailyStatEntry,
   type LeaderboardCategory,
   type LeaderboardEntry,
   type UserStats,
@@ -180,6 +183,7 @@ export default function ProfileScreen() {
   const [wheelOpen, setWheelOpen] = useState(false);
   const [words, setWords] = useState<UserWord[]>([]);
   const wordCount = words.length;
+  const [dailyStats, setDailyStats] = useState<DailyStatEntry[]>([]);
   const [leaderboardCategory, setLeaderboardCategory] = useState<LeaderboardCategory>('streak');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
@@ -200,6 +204,13 @@ export default function ProfileScreen() {
     if (!user) return;
     return subscribeToUserWords(user.uid, setWords);
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    getRecentDailyStats(user.uid, 7)
+      .then(setDailyStats)
+      .catch(() => setDailyStats([]));
+  }, [user, stats?.dailyMinutes]);
 
   useEffect(() => {
     if (!achievementsOpen) return;
@@ -602,6 +613,13 @@ export default function ProfileScreen() {
             </ThemedText>
           </Pressable>
         )}
+
+        <ThemedView type="bgCard" style={[styles.statsCard, { borderColor: theme.border }]}>
+          <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
+            Zaman İçinde İlerleme (Son 7 Gün)
+          </ThemedText>
+          <ProgressChart entries={dailyStats} />
+        </ThemedView>
 
         <View style={styles.actionRow}>
           <Pressable
