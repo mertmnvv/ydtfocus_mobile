@@ -6,16 +6,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SpinWheelModal } from '@/components/spin-wheel-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LEVEL_INTERVALS } from '@/constants/srs';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import {
-  getUserWords,
   getWheelState,
   subscribeToLeaderboard,
   subscribeToUserStats,
+  subscribeToUserWords,
   type LeaderboardCategory,
   type LeaderboardEntry,
   type UserStats,
+  type UserWord,
   type WheelState,
 } from '@/lib/firestore';
 import { useTheme } from '@/hooks/use-theme';
@@ -157,7 +159,8 @@ export default function ProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [wheelState, setWheelState] = useState<WheelState>(emptyWheelState);
   const [wheelOpen, setWheelOpen] = useState(false);
-  const [wordCount, setWordCount] = useState(0);
+  const [words, setWords] = useState<UserWord[]>([]);
+  const wordCount = words.length;
   const [leaderboardCategory, setLeaderboardCategory] = useState<LeaderboardCategory>('streak');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
@@ -170,9 +173,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user) return;
-    getUserWords(user.uid)
-      .then((words) => setWordCount(words.length))
-      .catch(() => setWordCount(0));
+    return subscribeToUserWords(user.uid, setWords);
   }, [user]);
 
   useEffect(() => {
@@ -211,6 +212,16 @@ export default function ProfileScreen() {
   };
   const unlockedBadgeCount = BADGES.filter((b) => b.isUnlocked(badgeCtx)).length;
   const badgeCategories = Array.from(new Set(BADGES.map((b) => b.category)));
+
+  // SRS dağılımı — src/app/review.tsx'teki level mantığıyla aynı eksen:
+  // level 0..LEVEL_INTERVALS.length-1. Sınırlar:
+  //  - Yeni: level === 0 (hiç doğru tekrar yapılmamış)
+  //  - Öğreniliyor: 0 < level < LEVEL_INTERVALS.length - 1 (ara seviyeler)
+  //  - Ustalaşıldı: level === LEVEL_INTERVALS.length - 1 (son aralığa ulaşmış)
+  const maxLevel = LEVEL_INTERVALS.length - 1;
+  const srsNew = words.filter((w) => (w.level ?? 0) === 0).length;
+  const srsMastered = words.filter((w) => (w.level ?? 0) === maxLevel).length;
+  const srsLearning = wordCount - srsNew - srsMastered;
 
   async function handleLogout() {
     setError(null);
@@ -324,6 +335,59 @@ export default function ProfileScreen() {
             </View>
           </View>
         </ThemedView>
+
+        <Pressable
+          onPress={() => router.push('/word-bank')}
+          style={({ pressed }) => [
+            styles.statsCard,
+            { borderColor: theme.border, backgroundColor: theme.bgCard, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
+            Kelime Bankası Dağılımı
+          </ThemedText>
+          {wordCount === 0 ? (
+            <ThemedText themeColor="textMuted" type="small">
+              Henüz kelime bankana kelime eklemedin.
+            </ThemedText>
+          ) : (
+            <>
+              <View style={[styles.srsBar, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+                {srsNew > 0 ? (
+                  <View style={[styles.srsBarSegment, { flexGrow: srsNew, backgroundColor: theme.border }]} />
+                ) : null}
+                {srsLearning > 0 ? (
+                  <View
+                    style={[styles.srsBarSegment, { flexGrow: srsLearning, backgroundColor: theme.academicWord }]}
+                  />
+                ) : null}
+                {srsMastered > 0 ? (
+                  <View style={[styles.srsBarSegment, { flexGrow: srsMastered, backgroundColor: theme.savedWord }]} />
+                ) : null}
+              </View>
+              <View style={styles.srsLegendRow}>
+                <View style={styles.srsLegendItem}>
+                  <View style={[styles.srsLegendDot, { backgroundColor: theme.border }]} />
+                  <ThemedText themeColor="textMuted" type="small">
+                    Yeni: {srsNew}
+                  </ThemedText>
+                </View>
+                <View style={styles.srsLegendItem}>
+                  <View style={[styles.srsLegendDot, { backgroundColor: theme.academicWord }]} />
+                  <ThemedText themeColor="textMuted" type="small">
+                    Öğreniliyor: {srsLearning}
+                  </ThemedText>
+                </View>
+                <View style={styles.srsLegendItem}>
+                  <View style={[styles.srsLegendDot, { backgroundColor: theme.savedWord }]} />
+                  <ThemedText themeColor="textMuted" type="small">
+                    Ustalaşıldı: {srsMastered}
+                  </ThemedText>
+                </View>
+              </View>
+            </>
+          )}
+        </Pressable>
 
         <View style={styles.actionRow}>
           <Pressable
@@ -625,6 +689,22 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
   },
   statsTitle: { marginBottom: Spacing.two },
+  srsBar: {
+    flexDirection: 'row',
+    height: 10,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  srsBarSegment: { height: '100%' },
+  srsLegendRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  srsLegendItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  srsLegendDot: { width: 8, height: 8, borderRadius: 4 },
   statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
   statItem: { alignItems: 'center', gap: Spacing.half, flex: 1 },
   statValue: { fontWeight: '900' },
