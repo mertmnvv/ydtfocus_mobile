@@ -144,7 +144,26 @@ export async function refreshUserStreak(uid: string) {
   let { streak } = current;
   const { lastDate } = current;
 
-  if (lastDate === today) return streak;
+  // Aynı gün içinde tekrar çağrıldıysa (word-quiz.tsx her test bitişinde
+  // çağırıyor) yine de bugünün snapshot'ını (dailyMinutes/correct/wrong
+  // güncel değerleriyle) tazeleyelim — "Zaman İçinde İlerleme" grafiğinin
+  // bugünkü çubuğu güne yayılan aktiviteyle birlikte güncel kalsın.
+  if (lastDate === today) {
+    await recordDailySnapshot(uid).catch(() => {});
+    return streak;
+  }
+
+  // Yeni bir güne geçiliyor: lastDate/dailyMinutes/correct/wrong henüz
+  // BUGÜNE resetlenmedi (incrementStudyMinutes ayrı bir yerde, kendi
+  // "yeni gün" kontrolüyle resetliyor) — yani şu an current içindeki
+  // dailyMinutes hâlâ ÖNCEKİ günün (lastDate) toplamı. Bu yüzden
+  // snapshot'ı "today" değil, biten günün kendi anahtarıyla (lastDate)
+  // kaydediyoruz; aksi halde önceki günün verisi kaybolur ve bugünün
+  // kaydı yanlışlıkla dünün rakamlarıyla açılmış olurdu.
+  if (lastDate) {
+    await recordDailySnapshot(uid, lastDate).catch(() => {});
+  }
+
   streak = lastDate === yesterday ? streak + 1 : 1;
 
   await updateDoc(statsRef, { streak, lastDate: today });
@@ -225,6 +244,85 @@ export async function updateUserStats(uid: string, delta: { correct: number; wro
     correct: increment(delta.correct),
     wrong: increment(delta.wrong),
   });
+}
+
+// ===== Zaman İçinde İlerleme (günlük anlık görüntü) =====
+// users/{uid}/dailyStats/{YYYY-MM-DD} — Profil ekranındaki "Zaman İçinde
+// İlerleme" grafiği için. UserStats'ta ("data/stats" dökümanı) geçmiş
+// GÜNLERE ait veri tutulmuyor: dailyMinutes her gün 0'a resetleniyor
+// (bkz. incrementStudyMinutes), streak/lastDate sadece "bugün" bilgisi.
+// Bu yüzden trend göstermek için ayrı bir günlük anlık görüntü (snapshot)
+// koleksiyonu gerekiyor.
+//
+// ÖNEMLİ — correct/wrong alanları hakkında: UserStats.correct/wrong,
+// SRS/Hatalarım oturumlarından `updateUserStats` ile `increment()` edilen
+// ÖMÜR BOYU (lifetime) KÜMÜLATİF sayaçlardır (bkz. yukarıdaki
+// updateUserStats, ve word-quiz.tsx/mistakes.tsx/review.tsx'teki
+// kullanım — hiçbir yerde günlük resetlenmiyor). dailyMinutes'ın aksine
+// "bugüne özel" bir değer DEĞİL. Bu yüzden her gün için doğru olan şey,
+// o günün SONUNDAKİ kümülatif correct/wrong toplamını olduğu gibi
+// kaydetmek (dailyMinutes hariç — o zaten günlük); grafik tarafında
+// (profile.tsx) ardışık günlerin kümülatif correct/wrong farkı alınarak
+// ("bugünkü kümülatif" - "dünkü kümülatif") o güne özel doğru/yanlış
+// sayısı hesaplanıyor. Snapshot'ı ham kümülatif değer olarak saklamak,
+// aradan gün atlanırsa (kullanıcı birkaç gün uygulamayı açmazsa) bile
+// var olan iki snapshot arasındaki farkın hâlâ doğru bir delta vermesini
+// sağlıyor — oysa "o günkü delta"yı snapshot ANINDA hesaplayıp kaydetmeye
+// çalışsaydık, önceki günün snapshot'ı hiç yazılmamışsa (uygulama o gün
+// hiç açılmamışsa) yanlış/eksik bir delta kaydetmiş olurduk.
+export type DailyStatEntry = {
+  date: string; // YYYY-MM-DD (yerel tarih)
+  minutes: number; // O günün dailyMinutes değeri (zaten günlük, olduğu gibi)
+  correct: number; // O gün sonu itibarıyla KÜMÜLATİF doğru sayısı (delta değil)
+  wrong: number; // O gün sonu itibarıyla KÜMÜLATİF yanlış sayısı (delta değil)
+};
+
+function todayKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// UserStats.lastDate, toLocaleDateString('tr-TR') ile "GG.AA.YYYY" biçiminde
+// tutuluyor (bkz. refreshUserStreak/incrementStudyMinutes) — dailyStats
+// doküman ID'leriyle (todayKey → "YYYY-MM-DD") aynı sıralanabilir biçimde
+// olması için burada dönüştürülüyor. İki farklı biçim karışırsa hem
+// orderBy('date') sıralaması hem de günler arası doğru/yanlış delta'sı
+// bozulur, bu yüzden TÜM dailyStats yazımları bu fonksiyondan geçmeli.
+function trDateToKey(trDate: string): string | null {
+  const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(trDate);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+// Günde bir kez çağrılması yeterli (idempotent — merge:true ile upsert).
+// refreshUserStreak zaten "yeni gün mü" tespitini yapıp streak'i
+// güncellediği noktada (auth-context.tsx'teki periyodik/login tetiklemesi)
+// bu fonksiyon da çağrılır — ayrı bir "yeni gün" tespiti eklemeye gerek yok.
+export async function recordDailySnapshot(uid: string, trDateOverride?: string): Promise<void> {
+  const stats = await getUserStats(uid);
+  const key = (trDateOverride && trDateToKey(trDateOverride)) || todayKey();
+  await setDoc(
+    doc(db, 'users', uid, 'dailyStats', key),
+    {
+      date: key,
+      minutes: stats.dailyMinutes || 0,
+      correct: stats.correct || 0,
+      wrong: stats.wrong || 0,
+    },
+    { merge: true }
+  );
+}
+
+// Son N güne ait snapshot'ları tarihe göre artan sırada döndürür. Henüz
+// snapshot'ı olmayan günler dizide YOK sayılır (atlanır) — profile.tsx
+// eksik günleri "veri yok" olarak ele alıp buna göre gösteriyor.
+export async function getRecentDailyStats(uid: string, days: number): Promise<DailyStatEntry[]> {
+  const q = query(collection(db, 'users', uid, 'dailyStats'), orderBy('date', 'desc'), limit(days));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => d.data() as DailyStatEntry).reverse();
 }
 
 // ===== Hatalarım =====

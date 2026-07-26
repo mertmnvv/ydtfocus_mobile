@@ -13,7 +13,13 @@ import { onSnapshot, doc } from 'firebase/firestore';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 
 import { auth, db } from '@/lib/firebase';
-import { ensureUserProfile, incrementStudyMinutes, premiumUntilMs, type UserProfile } from '@/lib/firestore';
+import {
+  ensureUserProfile,
+  incrementStudyMinutes,
+  premiumUntilMs,
+  refreshUserStreak,
+  type UserProfile,
+} from '@/lib/firestore';
 import { registerForPushNotifications } from '@/lib/notifications';
 
 GoogleSignin.configure({
@@ -78,6 +84,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(() => {
       incrementStudyMinutes(user.uid, 1).catch(() => {});
     }, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Zaman İçinde İlerleme grafiği için günlük snapshot — refreshUserStreak
+  // zaten "yeni gün mü" tespitini yapıp gerektiğinde biten günün
+  // snapshot'ını kaydediyor (bkz. firestore.ts → recordDailySnapshot).
+  // Ayrı bir "yeni gün" tespiti eklemek yerine bu mevcut tespit noktası
+  // login'de ve her 5 dakikada bir tetiklenerek hem gün geçişi hem de
+  // gün içi ilerleme (dailyMinutes/correct/wrong) güncel tutuluyor.
+  useEffect(() => {
+    if (!user) return;
+    refreshUserStreak(user.uid).catch(() => {});
+    const interval = setInterval(() => {
+      refreshUserStreak(user.uid).catch(() => {});
+    }, 300000);
     return () => clearInterval(interval);
   }, [user]);
 

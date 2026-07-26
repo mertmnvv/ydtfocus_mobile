@@ -3,16 +3,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProgressChart } from '@/components/progress-chart';
 import { SpinWheelModal } from '@/components/spin-wheel-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import {
+  getRecentDailyStats,
   getUserWords,
   getWheelState,
   subscribeToLeaderboard,
   subscribeToUserStats,
+  type DailyStatEntry,
   type LeaderboardCategory,
   type LeaderboardEntry,
   type UserStats,
@@ -158,6 +161,7 @@ export default function ProfileScreen() {
   const [wheelState, setWheelState] = useState<WheelState>(emptyWheelState);
   const [wheelOpen, setWheelOpen] = useState(false);
   const [wordCount, setWordCount] = useState(0);
+  const [dailyStats, setDailyStats] = useState<DailyStatEntry[]>([]);
   const [leaderboardCategory, setLeaderboardCategory] = useState<LeaderboardCategory>('streak');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
@@ -174,6 +178,13 @@ export default function ProfileScreen() {
       .then((words) => setWordCount(words.length))
       .catch(() => setWordCount(0));
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    getRecentDailyStats(user.uid, 7)
+      .then(setDailyStats)
+      .catch(() => setDailyStats([]));
+  }, [user, stats?.dailyMinutes]);
 
   useEffect(() => {
     if (!achievementsOpen) return;
@@ -323,6 +334,13 @@ export default function ProfileScreen() {
               </ThemedText>
             </View>
           </View>
+        </ThemedView>
+
+        <ThemedView type="bgCard" style={[styles.statsCard, { borderColor: theme.border }]}>
+          <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
+            Zaman İçinde İlerleme (Son 7 Gün)
+          </ThemedText>
+          <ProgressChart entries={dailyStats} />
         </ThemedView>
 
         <View style={styles.actionRow}>
