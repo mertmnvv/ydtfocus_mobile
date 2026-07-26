@@ -17,7 +17,7 @@ import {
   purchaseGift,
   type GiftProductId,
 } from '@/lib/iap';
-import { redeemGiftCode } from '@/lib/firestore';
+import { redeemGiftCodeViaFunction } from '@/lib/functions';
 import { useTheme } from '@/hooks/use-theme';
 
 const GIFT_TIERS: { id: GiftProductId; label: string }[] = [
@@ -84,13 +84,16 @@ export default function GiftScreen() {
     setRedeeming(true);
     setRedeemMessage(null);
     try {
-      const result = await redeemGiftCode(user.uid, code);
-      if (result.ok) {
-        setRedeemMessage({ text: `${result.days} gün premium hesabına eklendi!`, ok: true });
-        setCode('');
-      } else {
-        setRedeemMessage({ text: result.error, ok: false });
-      }
+      // Kod kullanma artık redeemGiftCode Cloud Function'ında (Admin SDK
+      // ile) — client'ın giftCodes'a hiç erişimi yok (bkz. TODO.md
+      // "Güvenlik notu"). Hata mesajları HttpsError.message'dan geliyor
+      // (Kod bulunamadı / zaten kullanılmış / kendi kodun).
+      const result = await redeemGiftCodeViaFunction(code);
+      setRedeemMessage({ text: `${result.days} gün premium hesabına eklendi!`, ok: true });
+      setCode('');
+    } catch (err) {
+      const message = (err as { message?: string })?.message || 'Kod kullanılamadı, tekrar deneyin.';
+      setRedeemMessage({ text: message, ok: false });
     } finally {
       setRedeeming(false);
     }
@@ -146,8 +149,8 @@ export default function GiftScreen() {
                   <ActivityIndicator color={theme.accent} />
                 ) : (
                   <>
-                    <ThemedText type="smallBold">{tier.label}</ThemedText>
-                    <ThemedText themeColor="textMuted" type="small">
+                    <ThemedText type="smallBold" style={styles.tierText}>{tier.label}</ThemedText>
+                    <ThemedText themeColor="textMuted" type="small" style={styles.tierText}>
                       {GIFT_PRODUCT_DAYS[tier.id]} gün premium
                     </ThemedText>
                   </>
@@ -231,6 +234,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.half,
   },
+  tierText: { textAlign: 'center' },
   notice: { marginTop: Spacing.one },
   input: {
     borderWidth: StyleSheet.hairlineWidth,

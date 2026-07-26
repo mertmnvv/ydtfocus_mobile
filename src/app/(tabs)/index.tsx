@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -24,7 +25,8 @@ import {
   type WordLookup,
 } from '@/lib/api';
 import { playTtsAudio } from '@/lib/audio';
-import { addUserWord } from '@/lib/firestore';
+import { addUserWord, subscribeToUserWords } from '@/lib/firestore';
+import { getWordHighlightColor } from '@/lib/word-color';
 import { useTheme } from '@/hooks/use-theme';
 
 type SourceMode = 'wikipedia' | 'ai';
@@ -71,18 +73,19 @@ const AI_TOPICS = [
   { id: 'space', label: 'Uzay' },
 ] as const;
 
-const LEVELS: ReadingLevel[] = ['A2', 'B1', 'B2', 'C1'];
-
 function cleanWord(raw: string) {
   return raw.replace(/[^a-zA-Z'-]/g, '').toLowerCase();
 }
 
 export default function ReadingScreen() {
   const theme = useTheme();
-  const { user } = useAuth();
-
+  const { user, userProfile } = useAuth();
   const [sourceMode, setSourceMode] = useState<SourceMode>('wikipedia');
-  const [level, setLevel] = useState<ReadingLevel>('B1');
+  // Elle seviye seçici yok — pasaj her zaman kullanıcının profil
+  // seviyesine göre çekilir/sadeleştirilir (bkz. AGENTS.md görev notu),
+  // sınav girmemiş olamaz (zorunlu, bkz. _layout.tsx) ama yine de
+  // güvenlik payı olarak B1 varsayılan bırakılıyor.
+  const level: ReadingLevel = (userProfile?.level as ReadingLevel) || 'B1';
   const [topic, setTopic] = useState<string>('random');
   const [passage, setPassage] = useState<ReadingPassage | null>(null);
   const [loading, setLoading] = useState(false);
@@ -96,7 +99,21 @@ export default function ReadingScreen() {
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [lookup, setLookup] = useState<WordLookup | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'already'>('idle');
+  // Kelime bankasındaki kelimelerin canlı listesi (küçük harf) — hem
+  // "Zaten Ekli" durumunu hem pasajdaki kalıcı renklendirmeyi besler.
+  const [savedWords, setSavedWords] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!user) {
+      setSavedWords(new Set());
+      return;
+    }
+    const unsubscribe = subscribeToUserWords(user.uid, (words) => {
+      setSavedWords(new Set(words.map((w) => w.word.toLowerCase())));
+    });
+    return unsubscribe;
+  }, [user]);
 
   const loadPassage = useCallback(async (selectedTopic: string, mode: SourceMode, selectedLevel: ReadingLevel) => {
     setLoading(true);
@@ -105,7 +122,7 @@ export default function ReadingScreen() {
     try {
       const result =
         mode === 'wikipedia'
-          ? await fetchReadingPassage(selectedTopic)
+          ? await fetchReadingPassage(selectedTopic, selectedLevel)
           : await fetchAiPassage(selectedTopic, selectedLevel);
       setPassage(result);
     } catch {
@@ -115,22 +132,19 @@ export default function ReadingScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'ta ilk metni çekmek için kasıtlı
-    loadPassage('random', 'wikipedia', 'B1');
-  }, [loadPassage]);
-
   function handleModeChange(mode: SourceMode) {
     if (mode === sourceMode) return;
     setSourceMode(mode);
     setTopic('random');
-    loadPassage('random', mode, level);
-  }
-
-  function handleLevelChange(newLevel: ReadingLevel) {
-    if (newLevel === level) return;
-    setLevel(newLevel);
-    loadPassage(topic, sourceMode, newLevel);
+    // AI modu Groq'a gerçek bir üretim isteği atıyor (token maliyeti var) —
+    // Wikipedia'nın aksine konu/seviye seçimiyle otomatik tetiklenmez,
+    // kullanıcı "Metni Oluştur" butonuna basmadan çağrı yapılmaz.
+    if (mode === 'wikipedia') {
+      loadPassage('random', mode, level);
+    } else {
+      setPassage(null);
+      setError(null);
+    }
   }
 
   async function handlePlayPassage() {
@@ -151,7 +165,7 @@ export default function ReadingScreen() {
     if (!word) return;
     setSelectedWord(word);
     setLookup(null);
-    setSaveState('idle');
+    setSaveState(savedWords.has(word.toLowerCase()) ? 'already' : 'idle');
     setLookupLoading(true);
     try {
       const result = await lookupWord(word);
@@ -206,6 +220,41 @@ export default function ReadingScreen() {
           </Pressable>
         </View>
 
+        <View style={styles.quickLinksRow}>
+          <Pressable
+            onPress={() => router.push('/review')}
+            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+          >
+            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+              Akıllı Tekrar
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/mistakes')}
+            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+          >
+            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+              Hatalarım
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/flashcards')}
+            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+          >
+            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+              Kartlar
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/grammar')}
+            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+          >
+            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+              Gramer
+            </ThemedText>
+          </Pressable>
+        </View>
+
         <View style={styles.modeRow}>
           {(
             [
@@ -234,31 +283,6 @@ export default function ReadingScreen() {
           })}
         </View>
 
-        {sourceMode === 'ai' && (
-          <View style={styles.levelRow}>
-            {LEVELS.map((lvl) => {
-              const active = lvl === level;
-              return (
-                <Pressable
-                  key={lvl}
-                  onPress={() => handleLevelChange(lvl)}
-                  style={[
-                    styles.levelChip,
-                    {
-                      backgroundColor: active ? theme.accent : theme.bgCard,
-                      borderColor: active ? theme.accent : theme.border,
-                    },
-                  ]}
-                >
-                  <ThemedText type="smallBold" themeColor={active ? 'bg' : 'textMuted'}>
-                    {lvl}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -272,7 +296,9 @@ export default function ReadingScreen() {
                 key={t.id}
                 onPress={() => {
                   setTopic(t.id);
-                  loadPassage(t.id, sourceMode, level);
+                  if (sourceMode === 'wikipedia') {
+                    loadPassage(t.id, sourceMode, level);
+                  }
                 }}
                 style={[
                   styles.topicChip,
@@ -294,6 +320,18 @@ export default function ReadingScreen() {
           })}
         </ScrollView>
 
+        {sourceMode === 'ai' && (
+          <Pressable
+            onPress={() => loadPassage(topic, 'ai', level)}
+            disabled={loading}
+            style={[styles.generateButton, { backgroundColor: theme.accent, opacity: loading ? 0.6 : 1 }]}
+          >
+            <ThemedText type="smallBold" themeColor="bg">
+              {loading ? 'Oluşturuluyor…' : passage ? 'Yeni Metin Oluştur' : 'Metni Oluştur'}
+            </ThemedText>
+          </Pressable>
+        )}
+
         <ScrollView style={styles.passageScroll} contentContainerStyle={styles.passageContent}>
           {loading && (
             <View style={styles.centerBox}>
@@ -307,6 +345,22 @@ export default function ReadingScreen() {
             </ThemedText>
           )}
 
+          {!loading && !error && sourceMode === 'ai' && !passage && (
+            <View style={styles.centerBox}>
+              <ThemedText themeColor="textMuted" style={styles.emptyAiText}>
+                Konu ve seviye seçip "Metni Oluştur"a basınca AI ile senin için özel bir metin üretilir.
+              </ThemedText>
+            </View>
+          )}
+
+          {!loading && !error && sourceMode === 'wikipedia' && !passage && (
+            <View style={styles.centerBox}>
+              <ThemedText themeColor="textMuted" style={styles.emptyAiText}>
+                Yukarıdan bir konu seç, senin için Wikipedia'dan bir metin getirelim.
+              </ThemedText>
+            </View>
+          )}
+
           {!loading && passage && (
             <>
               <View style={styles.passageHeaderRow}>
@@ -318,13 +372,13 @@ export default function ReadingScreen() {
                     <ActivityIndicator color={theme.accent} />
                   ) : (
                     <ThemedText type="smallBold" themeColor="accent">
-                      🔊 Dinle
+                      Dinle
                     </ThemedText>
                   )}
                 </Pressable>
                 <Pressable onPress={() => setQuizOpen(true)} style={styles.speakButton}>
                   <ThemedText type="smallBold" themeColor="accent">
-                    📝 Quiz
+                    Quiz
                   </ThemedText>
                 </Pressable>
               </View>
@@ -339,15 +393,21 @@ export default function ReadingScreen() {
                 <ThemedText style={styles.passageText}>{passage.tr}</ThemedText>
               ) : (
                 <View style={styles.wordsWrap}>
-                  {passage.text.split(/(\s+)/).map((token, idx) =>
-                    /^\s+$/.test(token) ? (
-                      <ThemedText key={idx}>{token}</ThemedText>
-                    ) : (
+                  {passage.text.split(/(\s+)/).map((token, idx) => {
+                    if (/^\s+$/.test(token)) {
+                      return <ThemedText key={idx}>{token}</ThemedText>;
+                    }
+                    const clean = cleanWord(token);
+                    const isSaved = savedWords.has(clean);
+                    const highlight = getWordHighlightColor(clean, isSaved, theme);
+                    return (
                       <Pressable key={idx} onPress={() => handleWordPress(token)}>
-                        <ThemedText style={styles.passageText}>{token}</ThemedText>
+                        <ThemedText style={[styles.passageText, highlight ? { color: highlight } : undefined]}>
+                          {token}
+                        </ThemedText>
                       </Pressable>
-                    )
-                  )}
+                    );
+                  })}
                 </View>
               )}
             </>
@@ -364,7 +424,7 @@ export default function ReadingScreen() {
               </ThemedText>
               <Pressable onPress={handleSpeakWord}>
                 <ThemedText type="smallBold" themeColor="accent">
-                  🔊
+                  Dinle
                 </ThemedText>
               </Pressable>
             </View>
@@ -407,7 +467,13 @@ export default function ReadingScreen() {
                   style={[styles.saveButton, { backgroundColor: theme.accent, opacity: saveState === 'idle' ? 1 : 0.7 }]}
                 >
                   <ThemedText type="smallBold" themeColor="bg">
-                    {saveState === 'saved' ? 'Eklendi ✓' : saveState === 'saving' ? 'Ekleniyor…' : 'Kelime Bankasına Ekle'}
+                    {saveState === 'saved'
+                      ? 'Eklendi'
+                      : saveState === 'already'
+                        ? 'Zaten Ekli'
+                        : saveState === 'saving'
+                          ? 'Ekleniyor…'
+                          : 'Kelime Bankasına Ekle'}
                   </ThemedText>
                 </Pressable>
               </>
@@ -446,6 +512,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one + 2,
   },
+  quickLinksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+  },
+  quickLinkChip: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    alignItems: 'center',
+  },
+  quickLinkChipText: { textAlign: 'center' },
   modeRow: {
     flexDirection: 'row',
     gap: Spacing.two,
@@ -471,6 +554,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one + 2,
   },
+  generateButton: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    borderRadius: 10,
+    paddingVertical: Spacing.two + 2,
+    alignItems: 'center',
+  },
+  emptyAiText: { textAlign: 'center', paddingHorizontal: Spacing.four, lineHeight: 22 },
   topicRow: { flexGrow: 0, marginTop: Spacing.three },
   topicRowContent: { paddingHorizontal: Spacing.four, gap: Spacing.two },
   topicChip: {

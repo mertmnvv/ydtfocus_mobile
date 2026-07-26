@@ -5,10 +5,11 @@ import { SpinWheelGraphic } from '@/components/spin-wheel-graphic';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { pickSpinPrize, type SpinPrize } from '@/constants/spin-wheel';
+import { landingAngleForDays } from '@/constants/spin-wheel';
 import { useAuth } from '@/context/auth-context';
 import { showRewardedAd } from '@/lib/ads';
-import { canClaimAdSpin, canClaimFreeSpin, claimAdSpin, claimFreeSpin, createGiftCode, grantPremiumDays, type WheelState } from '@/lib/firestore';
+import { canClaimAdSpin, canClaimFreeSpin, type WheelState } from '@/lib/firestore';
+import { claimWheelPrize, spinWheel, type SpinResult } from '@/lib/functions';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
@@ -20,10 +21,10 @@ type Props = {
 
 export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChange }: Props) {
   const theme = useTheme();
-  const { user, userProfile } = useAuth();
+  const { user } = useAuth();
   const [spinning, setSpinning] = useState(false);
   const [adLoading, setAdLoading] = useState(false);
-  const [prize, setPrize] = useState<SpinPrize | null>(null);
+  const [prize, setPrize] = useState<SpinResult | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
   const [claimState, setClaimState] = useState<'idle' | 'saving' | 'gifted'>('idle');
   const [giftCode, setGiftCode] = useState<string | null>(null);
@@ -52,20 +53,19 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
     if (!user || spinning) return;
     setSpinning(true);
     try {
-      if (kind === 'free') {
-        await claimFreeSpin(user.uid);
-      } else {
-        await claimAdSpin(user.uid);
-      }
+      // Hak kontrolü VE ödül seçimi artık spinWheel Cloud Function'ında
+      // (sunucu tarafında) — client sadece sonucu alıp animasyonu
+      // oynatıyor, ödülü kendi belirleyemiyor (bkz. TODO.md "Güvenlik notu").
+      const result = await spinWheel(kind);
       onWheelStateChange();
 
-      const result = pickSpinPrize();
+      const landingAngle = landingAngleForDays(result.days);
       // İbre 12 yönünde sabit — çarkın mutlak dönüşü (mod 360) landingAngle'ı
       // ibrenin altına getirecek şekilde hesaplanıyor, üzerine 4-6 tam tur
       // ekleniyor (görsel etki için), yön her zaman ileri (negatif delta yok).
       const spins = 4 + Math.floor(Math.random() * 3);
       const currentMod = ((currentRotationRef.current % 360) + 360) % 360;
-      const delta = (360 - result.landingAngle - currentMod + 360) % 360;
+      const delta = (360 - landingAngle - currentMod + 360) % 360;
       const target = currentRotationRef.current + spins * 360 + delta;
       currentRotationRef.current = target;
 
@@ -78,12 +78,17 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
         }).start(() => resolve());
       });
 
-      setPrize(result.prize);
+      setPrize(result);
       setResultVisible(true);
       reveal.setValue(0);
       Animated.timing(reveal, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+    } catch {
+      // Hak yoksa (failed-precondition) sessizce kapat — üstteki
+      // freeAvailable/adAvailable kontrolleri zaten butonu devre dışı
+      // bırakıyor, buraya normalde düşülmemeli.
     } finally {
       setSpinning(false);
+      onWheelStateChange();
     }
   }
 
@@ -106,7 +111,7 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
     if (!user || !prize || prize.days === 0) return;
     setClaimState('saving');
     try {
-      await grantPremiumDays(user.uid, prize.days);
+      await claimWheelPrize('self');
       setClaimState('idle');
       resetForNextSpin();
       onClose();
@@ -119,12 +124,12 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
     if (!user || !prize || prize.days === 0) return;
     setClaimState('saving');
     try {
-      const fromName = userProfile?.displayName || user.displayName || 'Bir arkadaşın';
-      const code = await createGiftCode(user.uid, fromName, prize.days, 'wheel');
-      setGiftCode(code);
+      const result = await claimWheelPrize('gift');
+      if (!result.giftCode) throw new Error('NO_CODE');
+      setGiftCode(result.giftCode);
       setClaimState('gifted');
       await Share.share({
-        message: `ydtfocus'ta ${prize.days} günlük premium kazandım ve sana hediye ediyorum! Kod: ${code}`,
+        message: `ydtfocus'ta ${prize.days} günlük premium kazandım ve sana hediye ediyorum! Kod: ${result.giftCode}`,
       });
     } catch {
       setClaimState('idle');

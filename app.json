@@ -44,7 +44,15 @@
           "androidAppId": "ca-app-pub-3940256099942544~3347511713",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#e2b714"
+        }
+      ],
+      "./plugins/withKotlinVersion"
     ],
     "experiments": {
       "typedRoutes": true,

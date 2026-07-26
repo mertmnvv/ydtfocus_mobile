@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  type DocumentSnapshot,
   getDoc,
   getDocs,
   increment,
@@ -11,9 +12,11 @@ import {
   onSnapshot,
   orderBy,
   query,
+  type QueryConstraint,
   runTransaction,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
 } from 'firebase/firestore';
@@ -70,8 +73,19 @@ export function subscribeToUserWords(uid: string, callback: (words: UserWord[]) 
   });
 }
 
+// Doküman ID'si kelimenin kendisinden türetiliyor (Date.now()_random yerine)
+// — böylece aynı kelime tekrar eklenmeye çalışılırsa setDoc var olan
+// dokümanın ÜZERİNE yazar, yinelenen kayıt oluşmaz. Harf dışı karakterler
+// atılıp küçük harfe çevrilir (case-insensitive eşleşme).
+function wordDocId(word: string) {
+  return word.toLowerCase().replace(/[^a-z]/g, '') || `w${Date.now()}`;
+}
+
 export async function addUserWord(uid: string, wordData: Record<string, unknown>) {
-  const wordId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const word = String(wordData.word ?? '');
+  const wordId = wordDocId(word);
+  const existing = await getDoc(doc(db, 'users', uid, 'words', wordId));
+  if (existing.exists()) return wordId;
   await setDoc(doc(db, 'users', uid, 'words', wordId), {
     ...wordData,
     level: 0,
@@ -291,17 +305,17 @@ export function subscribeToLeaderboard(
 
 // ===== Çark Çevir + Hediye Premium =====
 // Haftada 1 ücretsiz çevirme hakkı (bilinçli olarak kıt tutuluyor —
-// amaç kullanıcıyı premium satın almaya yönlendirmek, günlük bedava
-// çevirme kalıcı ihtiyacı ortadan kaldırıyordu) + rewarded ad ile
-// haftada sınırlı ekstra hak, kazanılan/satın alınan premium günlerin
-// hediye kodu üzerinden arkadaşa devri. Satın alınan hediyenin
-// doğrulanması (Play Billing) web tarafında olmalı — bkz. TODO.md
-// "Hediye/Çark" bölümü; grantPremiumDays/createGiftCode/redeemGiftCode
-// burada sadece çarktan kazanılan (parasız) ödüller ve kod kullanma
-// tarafı için. Hafta anahtarı olarak mevcut lastWeekNumber alanlarıyla
-// aynı desen kullanılıyor (getWeekNumber, yıl sınırında ~1 haftalık
-// çakışma riski var ama publicStats.lastWeekNumber'da da aynı ödün
-// yapılmış).
+// amaç kullanıcıyı premium satın almaya yönlendirmek). Ödül belirleme,
+// hak kontrolü, premiumUntil/role yazımı ve hediye kodu oluşturma/
+// kullanma artık TAMAMEN sunucu tarafında — Cloud Functions
+// (ydtfocusv2/functions/index.js → spinWheel/claimWheelPrize/
+// redeemGiftCode, bkz. src/lib/functions.ts). Bu bilerek böyle: client
+// kendi ödülünü/hediye kodunu doğrudan yazabiliyor olsaydı (önceki
+// tasarım) `days:9999` gibi sahte bir kod üretip başka hesapta
+// kullanabilirdi — bkz. TODO.md "Güvenlik notu".
+// Burada sadece "kaç hakkın var" bilgisini GÖSTERMEK için salt-okunur
+// bir durum kalıyor (`users/{uid}/data/wheel` — client artık bu
+// dökümana yazamıyor, bkz. ydtfocusv2/firestore.rules).
 
 export type WheelState = {
   lastFreeSpinWeek: number;
@@ -337,106 +351,14 @@ export function canClaimAdSpin(state: WheelState) {
   return state.adSpinsUsedThisWeek < MAX_AD_SPINS_PER_WEEK;
 }
 
-export async function claimFreeSpin(uid: string) {
-  const thisWeek = getWeekNumber(new Date());
-  await setDoc(doc(db, 'users', uid, 'data', 'wheel'), { lastFreeSpinWeek: thisWeek }, { merge: true });
-}
-
-export async function claimAdSpin(uid: string) {
-  const wheelRef = doc(db, 'users', uid, 'data', 'wheel');
-  const thisWeek = getWeekNumber(new Date());
-  const snap = await getDoc(wheelRef);
-  const data = snap.exists() ? (snap.data() as Partial<WheelState>) : {};
-  const usedThisWeek = data.lastAdSpinWeek === thisWeek ? data.adSpinsUsedThisWeek || 0 : 0;
-  await setDoc(wheelRef, { lastAdSpinWeek: thisWeek, adSpinsUsedThisWeek: usedThisWeek + 1 }, { merge: true });
-}
-
-// Hem çarktan kendine kullanma hem hediye kodu kullanma bu fonksiyonu
-// çağırır — premiumUntil gelecekteyse oradan, değilse şu andan itibaren
-// uzatılır (PayTR webhook'unun yazdığı premiumUntil alanıyla aynı desen).
-export async function grantPremiumDays(uid: string, days: number) {
-  const userRef = doc(db, 'users', uid);
-  const snap = await getDoc(userRef);
-  const current = snap.exists() ? (snap.data() as UserProfile) : null;
-  const base = current?.premiumUntil && current.premiumUntil > Date.now() ? current.premiumUntil : Date.now();
-  await updateDoc(userRef, {
-    role: 'premium',
-    premiumUntil: base + days * 86400000,
-  });
-}
-
-function generateGiftCode() {
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
-}
-
-export type GiftCode = {
-  code: string;
-  fromUid: string;
-  fromName: string;
-  days: number;
-  source: 'wheel' | 'purchase';
-  createdAt: unknown;
-  redeemed: boolean;
-  redeemedBy: string | null;
-  redeemedAt: unknown;
-  playOrderId?: string;
-};
-
-export async function createGiftCode(
-  uid: string,
-  fromName: string,
-  days: number,
-  source: 'wheel' | 'purchase',
-  playOrderId?: string
-) {
-  const code = generateGiftCode();
-  await setDoc(doc(db, 'giftCodes', code), {
-    code,
-    fromUid: uid,
-    fromName,
-    days,
-    source,
-    createdAt: serverTimestamp(),
-    redeemed: false,
-    redeemedBy: null,
-    redeemedAt: null,
-    ...(playOrderId ? { playOrderId } : {}),
-  });
-  return code;
-}
-
-export type RedeemGiftResult = { ok: true; days: number } | { ok: false; error: string };
-
-export async function redeemGiftCode(uid: string, rawCode: string): Promise<RedeemGiftResult> {
-  const code = rawCode.trim().toUpperCase();
-  const codeRef = doc(db, 'giftCodes', code);
-  const userRef = doc(db, 'users', uid);
-
-  try {
-    const days = await runTransaction(db, async (tx) => {
-      const codeSnap = await tx.get(codeRef);
-      if (!codeSnap.exists()) throw new Error('NOT_FOUND');
-      const giftData = codeSnap.data() as GiftCode;
-      if (giftData.redeemed) throw new Error('ALREADY_REDEEMED');
-      if (giftData.fromUid === uid) throw new Error('SELF_REDEEM');
-
-      const userSnap = await tx.get(userRef);
-      const current = userSnap.exists() ? (userSnap.data() as UserProfile) : null;
-      const base = current?.premiumUntil && current.premiumUntil > Date.now() ? current.premiumUntil : Date.now();
-
-      tx.update(codeRef, { redeemed: true, redeemedBy: uid, redeemedAt: serverTimestamp() });
-      tx.update(userRef, { role: 'premium', premiumUntil: base + giftData.days * 86400000 });
-
-      return giftData.days;
-    });
-    return { ok: true, days };
-  } catch (err) {
-    const message = (err as Error)?.message;
-    if (message === 'NOT_FOUND') return { ok: false, error: 'Kod bulunamadı.' };
-    if (message === 'ALREADY_REDEEMED') return { ok: false, error: 'Bu kod zaten kullanılmış.' };
-    if (message === 'SELF_REDEEM') return { ok: false, error: 'Kendi kodunu kullanamazsın.' };
-    return { ok: false, error: 'Kod kullanılamadı, tekrar deneyin.' };
-  }
+// premiumUntil web'de (PayTR callback, ydtfocusv2/src/app/api/paytr/callback/route.js
+// ve artık Cloud Functions/route'lar) ISO tarih STRING'i olarak
+// yazılıyor, sayı değil — auth-context.tsx'teki isPremium kontrolü bu
+// yüzden ham karşılaştırma yerine bu yardımcıyı kullanıyor.
+export function premiumUntilMs(value: string | undefined): number {
+  if (!value) return 0;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
 }
 
 // ===== Kullanıcı profili (users/{uid} dökümanı) =====
@@ -448,7 +370,14 @@ export type UserProfile = {
   searchName: string;
   photoURL: string | null;
   role: 'free' | 'premium' | 'admin';
-  premiumUntil?: number;
+  // ISO tarih string'i (PayTR callback'in yazdığı formatla aynı,
+  // bkz. premiumUntilMs) — sayı/timestamp DEĞİL.
+  premiumUntil?: string;
+  // Zorunlu seviye tespit sınavının sonucu — kayıt sırasında YAZILMAZ
+  // (bilerek eksik bırakılıyor), "sınav girmemiş" tespiti !userProfile.level
+  // ile yapılıyor (bkz. _layout.tsx RootNavigator, level-test.tsx).
+  level?: 'A2' | 'B1' | 'B2' | 'C1';
+  levelSetAt?: string;
   [key: string]: unknown;
 };
 
@@ -486,4 +415,144 @@ export async function ensureUserProfile(
   }
 
   await setDoc(userRef, updates, { merge: true });
+}
+
+// Zorunlu seviye tespit sınavı bitince (onboarding) veya "Seviyeni
+// Yükselt" ile yeniden girildiğinde (retake) çağrılıyor — bkz.
+// src/app/level-test.tsx. userProfile.level'ı onSnapshot ile canlı
+// dinleyen AuthProvider sayesinde _layout.tsx buna otomatik tepki verir.
+export async function setUserLevel(uid: string, level: string) {
+  await updateDoc(doc(db, 'users', uid), { level, levelSetAt: new Date().toISOString() });
+}
+
+// Web'deki useFcmToken.js / firestore.js updateFcmToken ile AYNI alan
+// adları (users/{uid}.fcmToken tekil string, çoklu cihaz desteklenmiyor —
+// web'de de öyle). Web'in cron tabanlı hatırlatma gönderimi
+// (api/notifications/remind/route.js) bu alanı doğrudan okuyor, bu
+// yüzden isim/şekil birebir uyuşmalı.
+export async function updateFcmToken(uid: string, token: string) {
+  const userRef = doc(db, 'users', uid);
+  await setDoc(userRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });
+}
+
+// ===== Sözlük (Akademik Sözlük / Archive) =====
+// Web'deki ArchivePanel.js ile aynı: global `archive` koleksiyonu
+// (admin-write, herkes okuyabilir — bkz. ydtfocusv2/firestore.rules),
+// sayfalama + seviye filtresi. Arama web'de de sunucu sorgusu değil,
+// yüklenen sayfa üzerinde istemci tarafı filtre.
+
+export type ArchiveWord = {
+  id: string;
+  word: string;
+  meaning: string;
+  syn?: string;
+  level?: string;
+};
+
+const ARCHIVE_PAGE_SIZE = 30;
+
+export async function getArchiveWords(
+  level: string | null,
+  cursor: DocumentSnapshot | null
+): Promise<{ words: ArchiveWord[]; lastDoc: DocumentSnapshot | null }> {
+  const archiveRef = collection(db, 'archive');
+  const constraints: QueryConstraint[] = [orderBy('word'), limit(ARCHIVE_PAGE_SIZE)];
+  if (level && level !== 'Tümü') constraints.unshift(where('level', '==', level));
+  if (cursor) constraints.push(startAfter(cursor));
+  const q = query(archiveRef, ...constraints);
+  const snapshot = await getDocs(q);
+  return {
+    words: snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as ArchiveWord),
+    lastDoc: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null,
+  };
+}
+
+// ===== Gramer Ansiklopedisi =====
+// Statik, admin tarafından yazılan içerik — AI üretimi yok. Web'deki
+// GrammarPanel.js ile aynı: grammarTopics koleksiyonu, sortOrder'a göre.
+
+export type GrammarTopic = {
+  id: string;
+  sortOrder: number;
+  title: string;
+  content: string;
+  tactics?: string;
+};
+
+export async function getGrammarTopics(): Promise<GrammarTopic[]> {
+  const snapshot = await getDocs(query(collection(db, 'grammarTopics'), orderBy('sortOrder')));
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as GrammarTopic);
+}
+
+// ===== Kartlar (Flashcard Deste) =====
+// users/{uid}/flashcardDecks/{deckId} — web'deki FlashcardsHubPanel.js ile
+// aynı şekil: { name, cards: [{word, meaning, sentence, status}],
+// totalStudied, lastStudied, createdAt }. AI ile deste üretimi web'in
+// dedike /api/generate-deck route'u üzerinden (bkz. src/lib/api.ts →
+// generateFlashcardDeck) — prompt web'de kaldığından burada tekrar
+// edilmiyor (generic /api/groq passthrough'unun aksine bu route zaten
+// mobil origin'den de çağrılabilir durumda olmalı, aynı CORS notu
+// gecerli, bkz. TODO.md).
+
+export type FlashcardStatus = 'new' | 'known' | 'unknown';
+
+export type FlashcardCard = {
+  word: string;
+  meaning: string;
+  sentence?: string;
+  status: FlashcardStatus;
+};
+
+export type FlashcardDeck = {
+  id: string;
+  name: string;
+  level?: string;
+  cards: FlashcardCard[];
+  totalStudied: number;
+  lastStudied?: number;
+  createdAt?: unknown;
+};
+
+export function subscribeToUserDecks(uid: string, callback: (decks: FlashcardDeck[]) => void) {
+  return onSnapshot(collection(db, 'users', uid, 'flashcardDecks'), (snapshot) => {
+    callback(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as FlashcardDeck));
+  });
+}
+
+export async function createDeck(uid: string, name: string, level: string, cards: FlashcardCard[]) {
+  const deckId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  await setDoc(doc(db, 'users', uid, 'flashcardDecks', deckId), {
+    name,
+    level,
+    cards,
+    totalStudied: 0,
+    createdAt: serverTimestamp(),
+  });
+  return deckId;
+}
+
+// "Sihirli değnek" — tek bir kart için üretilen örnek cümleyi kaydeder,
+// status/totalStudied'a dokunmadan (bkz. web'in FlashcardsHubPanel.js
+// aynı butonu).
+export async function updateCardSentence(uid: string, deck: FlashcardDeck, cardIndex: number, sentence: string) {
+  const cards = deck.cards.map((c, i) => (i === cardIndex ? { ...c, sentence } : c));
+  await updateDoc(doc(db, 'users', uid, 'flashcardDecks', deck.id), { cards });
+}
+
+export async function deleteDeck(uid: string, deckId: string) {
+  await deleteDoc(doc(db, 'users', uid, 'flashcardDecks', deckId));
+}
+
+export async function updateCardStatus(
+  uid: string,
+  deck: FlashcardDeck,
+  cardIndex: number,
+  status: FlashcardStatus
+) {
+  const cards = deck.cards.map((c, i) => (i === cardIndex ? { ...c, status } : c));
+  await updateDoc(doc(db, 'users', uid, 'flashcardDecks', deck.id), {
+    cards,
+    totalStudied: increment(1),
+    lastStudied: Date.now(),
+  });
 }

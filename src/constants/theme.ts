@@ -23,6 +23,12 @@ export const Colors = {
     archive: '#5e5ce6',
     error: '#ff453a',
     warning: '#ff9f0a',
+    // Kelime Bankasına eklenmiş kelimeler (pasajda kalıcı vurgu) — accent
+    // (altın) ile karışmasın diye ayrı, iOS-tarzı yeşil.
+    savedWord: '#30d158',
+    // "Akademik/zor" kelimeler (basit sezgi: >=8 harf, bkz. word-color.ts) —
+    // archive rengiyle aynı mor/indigo ailesi, dark temada da tanımlı.
+    academicWord: '#7d7aff',
     glass: 'rgba(255, 255, 255, 0.05)',
     // Geriye dönük uyumluluk (Expo şablonunun beklediği alan adları)
     background: '#0b0b0c',
@@ -42,6 +48,8 @@ export const Colors = {
     archive: '#5e5ce6',
     error: '#d70015',
     warning: '#ff9500',
+    savedWord: '#248a3d',
+    academicWord: '#5e5ce6',
     glass: 'rgba(0, 0, 0, 0.04)',
     background: '#f5f7fa',
     backgroundElement: '#ffffff',

@@ -24,14 +24,13 @@ export function getSpinSegments(): SpinSegment[] {
   });
 }
 
-export type SpinResult = { prize: SpinPrize; landingAngle: number };
-
-// landingAngle: çark üzerinde 0°-360° arası, ibrenin (üstte, sabit)
-// gerçekte hangi noktada duracağını belirler — animasyon bu açıya göre
-// döndürme miktarını hesaplar.
-export function pickSpinPrize(): SpinResult {
+// Ödül artık spinWheel Cloud Function'ında (ydtfocusv2/functions/index.js)
+// belirleniyor — client kendi ödülünü seçemiyor (bkz. TODO.md "Güvenlik
+// notu"). Bu fonksiyon sadece sunucudan dönen `days` değeri için,
+// SADECE animasyon amacıyla, o dilimin açı aralığında rastgele bir
+// "iniş açısı" üretir — gerçek ödülü etkilemez, salt görsel.
+export function landingAngleForDays(days: number): number {
   const segments = getSpinSegments();
-  const roll = Math.random() * 360;
-  const segment = segments.find((s) => roll >= s.startAngle && roll < s.endAngle) ?? segments[segments.length - 1];
-  return { prize: segment, landingAngle: roll };
+  const segment = segments.find((s) => s.days === days) ?? segments[0];
+  return segment.startAngle + Math.random() * (segment.endAngle - segment.startAngle);
 }

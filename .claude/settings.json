@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Read(//c/Mert/ydtfocusv2/src/app/\\\\\\(app\\\\\\)/reading/**)",
-      "Read(//c/Mert/ydtfocusv2/src/app/api/wikipedia/**)"
+      "Read(//c/Mert/ydtfocusv2/src/app/api/wikipedia/**)",
+      "Bash(npx eas *)",
+      "Read(//c/Mert/ydtfocusv2/src/**)"
     ]
   },
   "enabledPlugins": {

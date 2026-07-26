@@ -13,7 +13,8 @@ import { onSnapshot, doc } from 'firebase/firestore';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 
 import { auth, db } from '@/lib/firebase';
-import { ensureUserProfile, incrementStudyMinutes, type UserProfile } from '@/lib/firestore';
+import { ensureUserProfile, incrementStudyMinutes, premiumUntilMs, type UserProfile } from '@/lib/firestore';
+import { registerForPushNotifications } from '@/lib/notifications';
 
 GoogleSignin.configure({
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
         });
+        registerForPushNotifications(firebaseUser.uid).catch(() => {});
 
         unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), (snap) => {
           if (snap.exists()) setUserProfile(snap.data() as UserProfile);
@@ -106,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // burada en azından UI'da doğru göstermek için süre kontrolü ekleniyor.
   const premiumActive =
     userProfile?.role === 'premium' &&
-    (!userProfile.premiumUntil || userProfile.premiumUntil > Date.now());
+    (!userProfile.premiumUntil || premiumUntilMs(userProfile.premiumUntil) > Date.now());
   const isPremium = premiumActive || userProfile?.role === 'admin';
   const isAdmin = userProfile?.role === 'admin';
 

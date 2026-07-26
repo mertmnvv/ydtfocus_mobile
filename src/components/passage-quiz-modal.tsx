@@ -1,5 +1,13 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -24,6 +32,23 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [completed, setCompleted] = useState(false);
+  const scalesRef = useRef<Map<number, Animated.Value>>(new Map());
+
+  function getScale(qIdx: number) {
+    let value = scalesRef.current.get(qIdx);
+    if (!value) {
+      value = new Animated.Value(1);
+      scalesRef.current.set(qIdx, value);
+    }
+    return value;
+  }
+
+  const answeredCount = Object.keys(answers).length;
+  const correctCount = questions.reduce(
+    (sum, q, idx) => sum + (answers[idx] === q.correct ? 1 : 0),
+    0,
+  );
+  const allAnswered = questions.length > 0 && answeredCount === questions.length;
 
   useEffect(() => {
     if (!visible) return;
@@ -32,6 +57,7 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
     setQuestions([]);
     setAnswers({});
     setCompleted(false);
+    scalesRef.current.clear();
     fetchReadingQuiz(passageText)
       .then(setQuestions)
       .catch(() => setError('Quiz oluşturulamadı, tekrar dene.'))
@@ -52,6 +78,15 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
   function handleSelect(qIdx: number, key: string) {
     if (answers[qIdx]) return;
     setAnswers((prev) => ({ ...prev, [qIdx]: key }));
+    const isCorrect = key === questions[qIdx]?.correct;
+    const scale = getScale(qIdx);
+    scale.setValue(isCorrect ? 0.92 : 1);
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 4,
+      tension: 60,
+      useNativeDriver: true,
+    }).start();
   }
 
   return (
@@ -68,6 +103,13 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
               </ThemedText>
             </Pressable>
           </View>
+
+          {!loading && !error && questions.length > 0 && (
+            <ThemedText themeColor="textMuted" type="small" style={styles.progressText}>
+              {answeredCount}/{questions.length} soru cevaplandı
+              {answeredCount > 0 ? ` — ${correctCount} doğru` : ''}
+            </ThemedText>
+          )}
 
           {loading && (
             <View style={styles.centerBox}>
@@ -99,29 +141,43 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
                       : isSelected
                         ? theme.error
                         : theme.bgElevated;
+                  const animateThis = answered && (isCorrectKey || isSelected);
                   return (
-                    <Pressable
+                    <Animated.View
                       key={key}
-                      onPress={() => handleSelect(qIdx, key)}
-                      disabled={!!answered}
-                      style={[styles.optionButton, { backgroundColor: bg, borderColor: theme.border }]}
+                      style={animateThis ? { transform: [{ scale: getScale(qIdx) }] } : undefined}
                     >
-                      <ThemedText
-                        type="small"
-                        themeColor={answered && (isCorrectKey || isSelected) ? 'bg' : 'text'}
+                      <Pressable
+                        onPress={() => handleSelect(qIdx, key)}
+                        disabled={!!answered}
+                        style={[styles.optionButton, { backgroundColor: bg, borderColor: theme.border }]}
                       >
-                        {question[key]}
-                      </ThemedText>
-                    </Pressable>
+                        <ThemedText
+                          type="small"
+                          themeColor={answered && (isCorrectKey || isSelected) ? 'bg' : 'text'}
+                        >
+                          {question[key]}
+                        </ThemedText>
+                      </Pressable>
+                    </Animated.View>
                   );
                 })}
               </View>
             ))}
 
-          {completed && (
-            <ThemedText themeColor="accent" type="smallBold" style={styles.centerBox}>
-              Tebrikler, tüm soruları doğru cevapladın! 🎉
-            </ThemedText>
+          {allAnswered && (
+            <ThemedView type="bgElevated" style={[styles.summaryBox, { borderColor: theme.border }]}>
+              <ThemedText themeColor="accent" type="smallBold" style={styles.summaryTitle}>
+                {correctCount}/{questions.length} doğru
+              </ThemedText>
+              <ThemedText themeColor="textMuted" type="small" style={styles.summaryMessage}>
+                {correctCount === questions.length
+                  ? 'Mükemmel, tüm soruları doğru cevapladın!'
+                  : correctCount >= Math.ceil(questions.length / 2)
+                    ? 'İyi gidiyorsun, güzel bir sonuç.'
+                    : 'Fena değil, tekrar okuyup bir daha denemek işe yarayabilir.'}
+              </ThemedText>
+            </ThemedView>
           )}
           </ScrollView>
         </ThemedView>
@@ -142,8 +198,18 @@ const styles = StyleSheet.create({
   },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 20, fontWeight: '900' },
+  progressText: { textAlign: 'center' },
   centerBox: { paddingVertical: Spacing.four, textAlign: 'center' },
   scrollContent: { gap: Spacing.three },
+  summaryBox: {
+    gap: Spacing.one,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    padding: Spacing.three,
+    alignItems: 'center',
+  },
+  summaryTitle: { textAlign: 'center' },
+  summaryMessage: { textAlign: 'center' },
   questionBox: { gap: Spacing.two },
   questionText: { marginBottom: Spacing.one },
   optionButton: {

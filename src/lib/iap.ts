@@ -1,4 +1,4 @@
-import type { Product, Purchase } from 'react-native-iap';
+import type { Product, ProductSubscription, ProductSubscriptionAndroid, Purchase } from 'react-native-iap';
 
 // react-native-iap, react-native-nitro-modules (native Turbo/Fabric modülü)
 // gerektirir — bu, dev client'ın native olarak yeniden derlenmesini
@@ -57,6 +57,46 @@ export async function onPurchaseError(callback: (error: unknown) => void) {
 }
 
 export async function finishGiftTransaction(...args: Parameters<typeof import('react-native-iap').finishTransaction>) {
+  const { finishTransaction } = await loadIap();
+  return finishTransaction(...args);
+}
+
+// ── Premium aboneliği (PayTR'nin mobil karşılığı yerine doğrudan Play
+// Store) — Play Store'a dağıtılan bir Android uygulamasında dijital
+// abonelik SADECE Google Play Billing üzerinden satılabilir (mağaza
+// politikası), bu yüzden PayTR mobilde kullanılamaz; web'de PayTR
+// kalmaya devam ediyor, mobil sadece Play Billing kullanır. Play
+// Console'da bu ID'lerle abonelik ürünü tanımlanmalı (ayrı manuel iş).
+export const PREMIUM_PRODUCT_IDS = ['premium_monthly', 'premium_yearly'] as const;
+export type PremiumProductId = (typeof PREMIUM_PRODUCT_IDS)[number];
+
+export async function getPremiumSubscriptions(): Promise<ProductSubscription[]> {
+  const { fetchProducts } = await loadIap();
+  const result = await fetchProducts({ skus: [...PREMIUM_PRODUCT_IDS], type: 'subs' });
+  return (result as ProductSubscription[]) ?? [];
+}
+
+// Android abonelik satın alması icin offerToken gerekiyor - urun
+// listesinden ilk (temel) teklifi aliyoruz. Web'in aksine mobilde
+// birden fazla fiyatlandirma teklifi/kampanya su an desteklenmiyor.
+export async function purchasePremium(product: ProductSubscription) {
+  const { requestPurchase } = await loadIap();
+  const androidProduct = product as ProductSubscriptionAndroid;
+  const offerToken = androidProduct.subscriptionOfferDetailsAndroid?.[0]?.offerToken;
+  return requestPurchase({
+    type: 'subs',
+    request: {
+      google: {
+        skus: [product.id],
+        ...(offerToken ? { subscriptionOffers: [{ sku: product.id, offerToken }] } : {}),
+      },
+    },
+  });
+}
+
+export async function finishPremiumTransaction(
+  ...args: Parameters<typeof import('react-native-iap').finishTransaction>
+) {
   const { finishTransaction } = await loadIap();
   return finishTransaction(...args);
 }
