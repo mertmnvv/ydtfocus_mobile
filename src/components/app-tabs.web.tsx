@@ -28,6 +28,9 @@ export default function AppTabs() {
           <TabTrigger name="index" href="/index" asChild>
             <TabButton>Okuma</TabButton>
           </TabTrigger>
+          <TabTrigger name="word-bank" href="/word-bank" asChild>
+            <TabButton>Kelime Bankası</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/profile" asChild>
             <TabButton>Profil</TabButton>
           </TabTrigger>

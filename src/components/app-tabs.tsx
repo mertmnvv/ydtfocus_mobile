@@ -3,7 +3,7 @@ import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 
-// 2 sekmeli navigasyon — Okuma/Profil. Rozetler artık ayrı bir sekme
+// 3 sekmeli navigasyon — Okuma/Kelime Bankası/Profil. Rozetler artık ayrı bir sekme
 // değil, Profil'in içinde açılır/kapanır bir panel; Ayarlar da sekme
 // değil, Profil'den push edilen bir stack ekranı (bkz. src/app/settings.tsx
 // ve src/app/(tabs)/profile.tsx) — web'de zaten Reading-merkezli IA
@@ -29,6 +29,14 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Okuma</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           src={require('@/assets/images/tabIcons/home.png')}
+          renderingMode="template"
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="word-bank">
+        <NativeTabs.Trigger.Label>Kelime Bankası</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          src={require('@/assets/images/tabIcons/explore.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>

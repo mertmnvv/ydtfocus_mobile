@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -53,11 +52,6 @@ export default function WordBankScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <ThemedText type="smallBold" themeColor="accent">
-              ‹ Geri
-            </ThemedText>
-          </Pressable>
           <ThemedText type="subtitle" style={styles.title}>
             Kelime Bankam
           </ThemedText>
@@ -124,7 +118,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four, gap: Spacing.two },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.one },
-  backButton: { paddingVertical: Spacing.one },
   title: { fontWeight: '800' },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
