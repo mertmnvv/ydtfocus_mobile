@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SpinWheelModal } from '@/components/spin-wheel-modal';
@@ -290,6 +290,24 @@ export default function ProfileScreen() {
       setExamDateError('Kaydedilemedi, tekrar dene.');
     } finally {
       setSavingExamDate(false);
+    }
+  }
+
+  // Haftalık Özet Paylaşımı — mevcut subscribeToUserStats akışındaki
+  // stats state'i yeniden kullanılıyor, ayrı bir sorgu/abonelik yok.
+  // Basit metin paylaşımı: react-native'in yerleşik Share API'si (gift.tsx'teki
+  // hediye kodu paylaşımıyla aynı desen), ekran görüntüsü/kart oluşturma yok.
+  async function handleShareWeeklySummary() {
+    const weeklyMinutes = stats?.weeklyMinutes ?? 0;
+    const weeklyReadings = stats?.weeklyReadings ?? 0;
+    let message = `Bu hafta YDT Focus'ta ${weeklyMinutes} dakika çalıştım, ${weeklyReadings} metin okudum.`;
+    if (accuracy !== null) {
+      message += ` Doğruluk oranım %${accuracy}.`;
+    }
+    try {
+      await Share.share({ message });
+    } catch {
+      // Kullanıcı paylaşım ekranını kapattıysa sessizce yut.
     }
   }
 
@@ -654,6 +672,17 @@ export default function ProfileScreen() {
               </ThemedText>
             </Pressable>
           )}
+          <Pressable
+            onPress={handleShareWeeklySummary}
+            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+          >
+            <ThemedText type="smallBold" themeColor="accent">
+              Haftalık Özeti Paylaş
+            </ThemedText>
+            <ThemedText themeColor="textMuted" type="small">
+              Bu haftaki ilerlemeni paylaş
+            </ThemedText>
+          </Pressable>
         </View>
 
         <Pressable
