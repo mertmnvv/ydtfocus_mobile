@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
+import { fetchSpeechAudio, lookupWord, type WordLookup } from '@/lib/api';
+import { playTtsAudio } from '@/lib/audio';
 import { deleteUserWord, subscribeToUserWords, type UserWord } from '@/lib/firestore';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -19,6 +21,10 @@ export default function WordBankScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [selectedWord, setSelectedWord] = useState<UserWord | null>(null);
+  const [lookup, setLookup] = useState<WordLookup | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -45,6 +51,36 @@ export default function WordBankScreen() {
       await deleteUserWord(user.uid, wordId);
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  // Kaydedilen kelimede sadece word/translation/definition tutuluyor
+  // (bkz. index.tsx handleSaveWord), synonyms/antonym yerelde yok — bu
+  // yüzden modal açılınca reading ekranındaki gibi lookupWord ile daha
+  // zengin detay (eş anlamlı, telaffuz vb.) çekilir; API başarısız
+  // olursa yerel word/translation/definition alanlarına düşülür (aşağıda
+  // lookup null iken bu alanlar doğrudan gösteriliyor).
+  async function handleWordPress(item: UserWord) {
+    setSelectedWord(item);
+    setLookup(null);
+    setLookupLoading(true);
+    try {
+      const result = await lookupWord(item.word);
+      setLookup(result);
+    } catch {
+      setLookup(null);
+    } finally {
+      setLookupLoading(false);
+    }
+  }
+
+  async function handleSpeakWord() {
+    if (!selectedWord) return;
+    try {
+      const buffer = await fetchSpeechAudio(selectedWord.word);
+      await playTtsAudio(buffer);
+    } catch {
+      // sessizce yut
     }
   }
 
@@ -88,7 +124,7 @@ export default function WordBankScreen() {
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
             <ThemedView type="bgCard" style={[styles.wordCard, { borderColor: theme.border }]}>
-              <View style={styles.wordInfo}>
+              <Pressable style={styles.wordInfo} onPress={() => handleWordPress(item)}>
                 <View style={styles.wordRow}>
                   <ThemedText type="smallBold">{item.word}</ThemedText>
                 </View>
@@ -100,7 +136,7 @@ export default function WordBankScreen() {
                     {item.definition}
                   </ThemedText>
                 ) : null}
-              </View>
+              </Pressable>
               <Pressable onPress={() => handleDelete(item.id)} disabled={deletingId === item.id}>
                 <ThemedText themeColor="error" type="small">
                   {deletingId === item.id ? '…' : 'Sil'}
@@ -110,6 +146,87 @@ export default function WordBankScreen() {
           )}
         />
       </SafeAreaView>
+
+      <Modal visible={!!selectedWord} transparent animationType="fade" onRequestClose={() => setSelectedWord(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedWord(null)}>
+          <Pressable style={[styles.lookupCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+            <View style={styles.lookupHeaderRow}>
+              <ThemedText type="subtitle" style={styles.lookupWord}>
+                {selectedWord?.word}
+              </ThemedText>
+              <Pressable onPress={handleSpeakWord}>
+                <ThemedText type="smallBold" themeColor="accent">
+                  Dinle
+                </ThemedText>
+              </Pressable>
+            </View>
+
+            {lookupLoading && <ActivityIndicator color={theme.accent} style={styles.lookupLoading} />}
+
+            {!lookupLoading && (
+              <>
+                {lookup?.phonetic ? (
+                  <ThemedText themeColor="textMuted" type="small">
+                    {lookup.phonetic}
+                  </ThemedText>
+                ) : null}
+
+                <ThemedText type="smallBold" themeColor="accent" style={styles.lookupSectionLabel}>
+                  Türkçe
+                </ThemedText>
+                <ThemedText style={styles.lookupValue}>
+                  {lookup?.tr || selectedWord?.translation}
+                </ThemedText>
+
+                {(lookup?.definition || selectedWord?.definition) ? (
+                  <>
+                    <ThemedText type="smallBold" themeColor="accent" style={styles.lookupSectionLabel}>
+                      Tanım
+                    </ThemedText>
+                    <ThemedText themeColor="textMuted" style={styles.lookupValue}>
+                      {lookup?.definition || String(selectedWord?.definition)}
+                    </ThemedText>
+                  </>
+                ) : null}
+
+                {lookup?.synonyms && lookup.synonyms !== '-' ? (
+                  <>
+                    <ThemedText type="smallBold" themeColor="accent" style={styles.lookupSectionLabel}>
+                      Eş anlamlı
+                    </ThemedText>
+                    <ThemedText themeColor="textMuted" style={styles.lookupValue}>
+                      {lookup.synonyms}
+                    </ThemedText>
+                  </>
+                ) : null}
+
+                {lookup?.antonym && lookup.antonym !== '-' ? (
+                  <>
+                    <ThemedText type="smallBold" themeColor="accent" style={styles.lookupSectionLabel}>
+                      Zıt anlamlı
+                    </ThemedText>
+                    <ThemedText themeColor="textMuted" style={styles.lookupValue}>
+                      {lookup.antonym}
+                    </ThemedText>
+                  </>
+                ) : null}
+
+                <Pressable
+                  onPress={() => {
+                    if (selectedWord) handleDelete(selectedWord.id);
+                    setSelectedWord(null);
+                  }}
+                  style={[styles.deleteButton, { borderColor: theme.border }]}
+                >
+                  <ThemedText type="smallBold" themeColor="error">
+                    Bankadan Sil
+                  </ThemedText>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -139,4 +256,33 @@ const styles = StyleSheet.create({
   },
   wordInfo: { flex: 1, gap: Spacing.half },
   wordRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  lookupCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: Spacing.four,
+    paddingBottom: Spacing.six,
+  },
+  lookupHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.two,
+  },
+  lookupWord: { fontWeight: '800' },
+  lookupLoading: { marginVertical: Spacing.four },
+  lookupSectionLabel: { marginTop: Spacing.three },
+  lookupValue: { marginTop: Spacing.half, lineHeight: 22 },
+  deleteButton: {
+    marginTop: Spacing.four,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: Spacing.two + 2,
+    alignItems: 'center',
+  },
 });
