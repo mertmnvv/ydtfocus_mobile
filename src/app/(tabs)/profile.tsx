@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SpinWheelModal } from '@/components/spin-wheel-modal';
@@ -11,6 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import {
   getWheelState,
+  setExamDate,
   subscribeToLeaderboard,
   subscribeToUserStats,
   subscribeToUserWords,
@@ -21,6 +22,24 @@ import {
   type WheelState,
 } from '@/lib/firestore';
 import { useTheme } from '@/hooks/use-theme';
+
+// Sınav geri sayımı — bugünün tarihini saat/timezone'dan arındırıp
+// (yalnızca yıl/ay/gün) sınav tarihiyle gün cinsinden farkını hesaplar,
+// böylece gün içindeki saat değişimi sonucu etkilemez (off-by-one yok).
+function daysUntil(examDate: string): number {
+  const target = new Date(examDate);
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const targetUtc = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+  return Math.round((targetUtc - todayUtc) / 86400000);
+}
+
+function examTip(days: number): string {
+  if (days < 0) return 'Sınav tarihini güncellemeyi unutma.';
+  if (days < 30) return 'Son düzlük, her gün önemli.';
+  if (days <= 180) return 'Tempoyu artırma zamanı.';
+  return 'Bol vaktin var, düzenli çalış.';
+}
 
 const emptyWheelState: WheelState = { lastFreeSpinWeek: 0, lastAdSpinWeek: 0, adSpinsUsedThisWeek: 0 };
 
@@ -165,6 +184,12 @@ export default function ProfileScreen() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [editingExamDate, setEditingExamDate] = useState(false);
+  const [examDay, setExamDay] = useState('');
+  const [examMonth, setExamMonth] = useState('');
+  const [examYear, setExamYear] = useState('');
+  const [examDateError, setExamDateError] = useState<string | null>(null);
+  const [savingExamDate, setSavingExamDate] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -222,6 +247,51 @@ export default function ProfileScreen() {
   const srsNew = words.filter((w) => (w.level ?? 0) === 0).length;
   const srsMastered = words.filter((w) => (w.level ?? 0) === maxLevel).length;
   const srsLearning = wordCount - srsNew - srsMastered;
+
+  function openExamDateEditor() {
+    setExamDateError(null);
+    if (userProfile?.examDate) {
+      const [y, m, d] = userProfile.examDate.split('-');
+      setExamYear(y ?? '');
+      setExamMonth(m ?? '');
+      setExamDay(d ?? '');
+    } else {
+      setExamDay('');
+      setExamMonth('');
+      setExamYear('');
+    }
+    setEditingExamDate(true);
+  }
+
+  async function handleSaveExamDate() {
+    if (!user) return;
+    const day = Number(examDay);
+    const month = Number(examMonth);
+    const year = Number(examYear);
+
+    if (!day || !month || !year || year < 2024 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
+      setExamDateError('Lütfen geçerli bir tarih gir.');
+      return;
+    }
+
+    const iso = `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    const check = new Date(iso);
+    if (Number.isNaN(check.getTime()) || check.getUTCDate() !== day || check.getUTCMonth() + 1 !== month) {
+      setExamDateError('Lütfen geçerli bir tarih gir.');
+      return;
+    }
+
+    setExamDateError(null);
+    setSavingExamDate(true);
+    try {
+      await setExamDate(user.uid, iso);
+      setEditingExamDate(false);
+    } catch {
+      setExamDateError('Kaydedilemedi, tekrar dene.');
+    } finally {
+      setSavingExamDate(false);
+    }
+  }
 
   async function handleLogout() {
     setError(null);
@@ -388,6 +458,99 @@ export default function ProfileScreen() {
             </>
           )}
         </Pressable>
+
+        <ThemedView type="bgCard" style={[styles.examCard, { borderColor: theme.border }]}>
+          {!editingExamDate && userProfile?.examDate ? (
+            (() => {
+              const days = daysUntil(userProfile.examDate);
+              return (
+                <>
+                  <View style={styles.examHeaderRow}>
+                    <ThemedText type="smallBold" themeColor="textMuted">
+                      Sınav Geri Sayımı
+                    </ThemedText>
+                    <Pressable onPress={openExamDateEditor} hitSlop={8}>
+                      <ThemedText type="small" themeColor="accent">
+                        Değiştir
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                  <ThemedText type="title" themeColor="accent" style={styles.examDays}>
+                    {days >= 0 ? `Sınava ${days} gün kaldı` : 'Sınav tarihi geçti'}
+                  </ThemedText>
+                  <ThemedText themeColor="textMuted" type="small">
+                    {examTip(days)}
+                  </ThemedText>
+                </>
+              );
+            })()
+          ) : !editingExamDate ? (
+            <Pressable onPress={openExamDateEditor} style={styles.examPrompt}>
+              <ThemedText type="smallBold">Sınav tarihini belirle</ThemedText>
+              <ThemedText themeColor="textMuted" type="small">
+                Geri sayım ve çalışma temposu önerisi için sınav tarihini gir
+              </ThemedText>
+            </Pressable>
+          ) : (
+            <View style={styles.examEditor}>
+              <ThemedText type="smallBold" themeColor="textMuted">
+                Sınav Tarihi
+              </ThemedText>
+              <View style={styles.examInputRow}>
+                <TextInput
+                  value={examDay}
+                  onChangeText={setExamDay}
+                  placeholder="Gün"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  style={[styles.examInput, { borderColor: theme.border, color: theme.text }]}
+                />
+                <TextInput
+                  value={examMonth}
+                  onChangeText={setExamMonth}
+                  placeholder="Ay"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="number-pad"
+                  maxLength={2}
+                  style={[styles.examInput, { borderColor: theme.border, color: theme.text }]}
+                />
+                <TextInput
+                  value={examYear}
+                  onChangeText={setExamYear}
+                  placeholder="Yıl"
+                  placeholderTextColor={theme.textMuted}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  style={[styles.examInput, styles.examYearInput, { borderColor: theme.border, color: theme.text }]}
+                />
+              </View>
+              {examDateError ? (
+                <ThemedText themeColor="error" type="small">
+                  {examDateError}
+                </ThemedText>
+              ) : null}
+              <View style={styles.examEditorActions}>
+                <Pressable
+                  onPress={handleSaveExamDate}
+                  disabled={savingExamDate}
+                  style={[styles.examSaveButton, { backgroundColor: theme.accent, opacity: savingExamDate ? 0.7 : 1 }]}
+                >
+                  <ThemedText type="smallBold" themeColor="bg">
+                    {savingExamDate ? 'Kaydediliyor…' : 'Kaydet'}
+                  </ThemedText>
+                </Pressable>
+                {userProfile?.examDate ? (
+                  <Pressable onPress={() => setEditingExamDate(false)} hitSlop={8}>
+                    <ThemedText type="small" themeColor="textMuted">
+                      Vazgeç
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          )}
+        </ThemedView>
 
         <View style={styles.actionRow}>
           <Pressable
@@ -708,6 +871,33 @@ const styles = StyleSheet.create({
   statsGrid: { flexDirection: 'row', justifyContent: 'space-between' },
   statItem: { alignItems: 'center', gap: Spacing.half, flex: 1 },
   statValue: { fontWeight: '900' },
+  examCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: Spacing.three,
+    gap: Spacing.one,
+  },
+  examHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  examDays: { fontWeight: '900' },
+  examPrompt: { gap: Spacing.half },
+  examEditor: { gap: Spacing.two },
+  examInputRow: { flexDirection: 'row', gap: Spacing.two },
+  examInput: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.two,
+    textAlign: 'center',
+  },
+  examYearInput: { flex: 1.4 },
+  examEditorActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  examSaveButton: {
+    borderRadius: 8,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    alignSelf: 'flex-start',
+  },
   error: { marginTop: Spacing.one },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   actionCard: {

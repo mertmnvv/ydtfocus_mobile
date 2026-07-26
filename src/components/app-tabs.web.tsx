@@ -25,7 +25,7 @@ export default function AppTabs() {
       <TabSlot style={{ height: '100%' }} />
       <TabList asChild>
         <CustomTabList>
-          <TabTrigger name="index" href="/index" asChild>
+          <TabTrigger name="index" href="/" asChild>
             <TabButton>Okuma</TabButton>
           </TabTrigger>
           <TabTrigger name="word-bank" href="/word-bank" asChild>

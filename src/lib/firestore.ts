@@ -378,6 +378,11 @@ export type UserProfile = {
   // ile yapılıyor (bkz. _layout.tsx RootNavigator, level-test.tsx).
   level?: 'A2' | 'B1' | 'B2' | 'C1';
   levelSetAt?: string;
+  // Kullanıcının hedeflediği sınav tarihi — tarih-sadece ISO string
+  // ("2027-06-20"), saat/timezone bilgisi taşımaz (bkz. profile.tsx
+  // gün-sayımı hesaplaması). Kayıt sırasında yazılmaz, profilden
+  // isteğe bağlı olarak girilir/güncellenir.
+  examDate?: string;
   [key: string]: unknown;
 };
 
@@ -430,6 +435,12 @@ export async function setUserLevel(uid: string, level: string) {
 // web'de de öyle). Web'in cron tabanlı hatırlatma gönderimi
 // (api/notifications/remind/route.js) bu alanı doğrudan okuyor, bu
 // yüzden isim/şekil birebir uyuşmalı.
+// Profildeki "Sınav Geri Sayımı" kartı için — setUserLevel ile aynı
+// basit updateDoc deseni (bkz. yukarısı).
+export async function setExamDate(uid: string, examDate: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { examDate });
+}
+
 export async function updateFcmToken(uid: string, token: string) {
   const userRef = doc(db, 'users', uid);
   await setDoc(userRef, { fcmToken: token, lastTokenUpdate: serverTimestamp() }, { merge: true });

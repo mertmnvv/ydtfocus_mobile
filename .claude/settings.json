@@ -4,7 +4,16 @@
       "Read(//c/Mert/ydtfocusv2/src/app/\\\\\\(app\\\\\\)/reading/**)",
       "Read(//c/Mert/ydtfocusv2/src/app/api/wikipedia/**)",
       "Bash(npx eas *)",
-      "Read(//c/Mert/ydtfocusv2/src/**)"
+      "Read(//c/Mert/ydtfocusv2/src/**)",
+      "Bash(powershell -Command 'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '\\\\''expo start|metro|react-native start'\\\\'' } | Select-Object ProcessId, CommandLine')",
+      "Bash(powershell -Command 'Get-CimInstance Win32_Process | Where-Object { $_.Name -match '\\\\''node'\\\\'' } | Select-Object ProcessId, CommandLine')",
+      "Bash(powershell -Command 'Stop-Process -Id 20408 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 13804 -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Get-CimInstance Win32_Process | Where-Object { $_.Name -match '\\\\''node'\\\\'' } | Select-Object ProcessId, CommandLine')",
+      "Bash(npx expo *)",
+      "Bash(disown)",
+      "Read(//tmp/**)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   },
   "enabledPlugins": {
