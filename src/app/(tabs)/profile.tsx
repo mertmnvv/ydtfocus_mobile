@@ -552,6 +552,39 @@ export default function ProfileScreen() {
           )}
         </ThemedView>
 
+        {userProfile?.dailyGoalMinutes ? (
+          <ThemedView type="bgCard" style={[styles.goalCard, { borderColor: theme.border }]}>
+            <View style={styles.rowBetween}>
+              <ThemedText type="smallBold" themeColor="textMuted">
+                Günlük Hedef
+              </ThemedText>
+              <ThemedText type="smallBold" themeColor="accent">
+                {Math.min(stats?.dailyMinutes ?? 0, userProfile.dailyGoalMinutes)}/{userProfile.dailyGoalMinutes} dk
+              </ThemedText>
+            </View>
+            <View style={[styles.goalBarTrack, { backgroundColor: theme.bgElevated }]}>
+              <View
+                style={[
+                  styles.goalBarFill,
+                  {
+                    backgroundColor: theme.accent,
+                    width: `${Math.min(100, Math.round(((stats?.dailyMinutes ?? 0) / userProfile.dailyGoalMinutes) * 100))}%`,
+                  },
+                ]}
+              />
+            </View>
+          </ThemedView>
+        ) : (
+          <Pressable
+            onPress={() => router.push('/settings')}
+            style={[styles.goalHint, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+          >
+            <ThemedText themeColor="textMuted" type="small">
+              Ayarlar&apos;dan günlük çalışma hedefi belirle
+            </ThemedText>
+          </Pressable>
+        )}
+
         <View style={styles.actionRow}>
           <Pressable
             onPress={() => setWheelOpen(true)}
@@ -899,6 +932,27 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   error: { marginTop: Spacing.one },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  goalCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  goalBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  goalBarFill: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  goalHint: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: Spacing.three,
+  },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   actionCard: {
     flexBasis: '47%',

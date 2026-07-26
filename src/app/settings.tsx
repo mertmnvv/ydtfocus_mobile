@@ -10,6 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth-context';
 import { registerForPushNotifications } from '@/lib/notifications';
+import { setDailyGoalMinutes } from '@/lib/firestore';
 import { useTheme } from '@/hooks/use-theme';
 
 const appearanceLabel: Record<string, string> = {
@@ -17,6 +18,12 @@ const appearanceLabel: Record<string, string> = {
   dark: 'Koyu',
   unspecified: 'Sistem',
 };
+
+// "Kendi Hedef Belirleme" — streak'ten bağımsız, kullanıcının kendi
+// seçtiği günlük çalışma dakikası hedefi (bkz. firestore.ts
+// UserProfile.dailyGoalMinutes). Sabit bir preset seti — serbest metin
+// girişi yerine tek dokunuşla seçim, web'deki sade UX'e uygun.
+const DAILY_GOAL_PRESETS = [15, 30, 45, 60];
 
 // Ayarlar artık ayrı bir sekme değil, Profil'den (bkz. (tabs)/profile.tsx)
 // açılan bir stack ekranı — gift.tsx/premium.tsx ile aynı model. Bildirim
@@ -30,6 +37,20 @@ export default function SettingsScreen() {
   const [notifBusy, setNotifBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [goalBusy, setGoalBusy] = useState<number | null>(null);
+  const dailyGoalMinutes = userProfile?.dailyGoalMinutes;
+
+  async function handleSelectGoal(minutes: number) {
+    if (!user) return;
+    setGoalBusy(minutes);
+    try {
+      await setDailyGoalMinutes(user.uid, minutes);
+    } catch {
+      setError('Hedef kaydedilemedi, tekrar deneyin.');
+    } finally {
+      setGoalBusy(null);
+    }
+  }
 
   const refreshNotifStatus = useCallback(() => {
     Notifications.getPermissionsAsync()
@@ -155,6 +176,41 @@ export default function SettingsScreen() {
           </ThemedView>
 
           <ThemedText type="smallBold" themeColor="textMuted" style={styles.sectionTitle}>
+            GÜNLÜK HEDEF
+          </ThemedText>
+          <ThemedView type="bgCard" style={[styles.card, { borderColor: theme.border }]}>
+            <ThemedText themeColor="textMuted" type="small">
+              {dailyGoalMinutes
+                ? `Her gün ${dailyGoalMinutes} dakika çalışmayı hedefliyorsun.`
+                : 'Her gün ne kadar çalışmak istediğini seç, Profil\'de ilerlemeni takip et.'}
+            </ThemedText>
+            <View style={styles.chipRow}>
+              {DAILY_GOAL_PRESETS.map((minutes) => {
+                const selected = dailyGoalMinutes === minutes;
+                return (
+                  <Pressable
+                    key={minutes}
+                    onPress={() => handleSelectGoal(minutes)}
+                    disabled={goalBusy !== null}
+                    style={({ pressed }) => [
+                      styles.goalChip,
+                      {
+                        borderColor: selected ? theme.accent : theme.border,
+                        backgroundColor: selected ? theme.accent : theme.bgElevated,
+                        opacity: pressed || (goalBusy !== null && goalBusy !== minutes) ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <ThemedText type="smallBold" themeColor={selected ? 'bg' : 'text'}>
+                      {goalBusy === minutes ? '…' : `${minutes} dk`}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ThemedView>
+
+          <ThemedText type="smallBold" themeColor="textMuted" style={styles.sectionTitle}>
             UYGULAMA
           </ThemedText>
           <ThemedView type="bgCard" style={[styles.card, { borderColor: theme.border }]}>
@@ -217,6 +273,18 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   rowText: { flex: 1, gap: Spacing.half },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  goalChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+  },
   smallButton: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 8,
