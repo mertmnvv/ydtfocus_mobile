@@ -93,6 +93,7 @@ export default function ReadingScreen() {
   const [showTranslation, setShowTranslation] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
 
   const topicOptions = sourceMode === 'wikipedia' ? WIKI_TOPICS : AI_TOPICS;
 
@@ -220,40 +221,54 @@ export default function ReadingScreen() {
           </Pressable>
         </View>
 
-        <View style={styles.quickLinksRow}>
-          <Pressable
-            onPress={() => router.push('/review')}
-            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
-              Akıllı Tekrar
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/mistakes')}
-            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
-              Hatalarım
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/flashcards')}
-            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
-              Kartlar
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/grammar')}
-            style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
-              Gramer
-            </ThemedText>
-          </Pressable>
-        </View>
+        <Pressable
+          onPress={() => setToolsOpen((value) => !value)}
+          style={[styles.toolsToggle, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+        >
+          <ThemedText type="smallBold" themeColor="textMuted">
+            Araçlar
+          </ThemedText>
+          <ThemedText type="subtitle" themeColor="accent" style={styles.toolsToggleIcon}>
+            {toolsOpen ? '−' : '+'}
+          </ThemedText>
+        </Pressable>
+
+        {toolsOpen ? (
+          <View style={styles.quickLinksRow}>
+            <Pressable
+              onPress={() => router.push('/review')}
+              style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+            >
+              <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+                Akıllı Tekrar
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/mistakes')}
+              style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+            >
+              <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+                Hatalarım
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/flashcards')}
+              style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+            >
+              <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+                Kartlar
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/grammar')}
+              style={[styles.quickLinkChip, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+            >
+              <ThemedText type="smallBold" themeColor="accent" style={styles.quickLinkChipText}>
+                Gramer
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.modeRow}>
           {(
@@ -512,12 +527,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one + 2,
   },
+  toolsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
+  toolsToggleIcon: { lineHeight: 20 },
   quickLinksRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
-    marginTop: Spacing.three,
+    marginTop: Spacing.two,
   },
   quickLinkChip: {
     flexBasis: '47%',
