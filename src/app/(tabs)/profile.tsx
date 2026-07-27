@@ -2,6 +2,8 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { ProgressChart } from '@/components/progress-chart';
 import { SpinWheelModal } from '@/components/spin-wheel-modal';
@@ -187,13 +189,60 @@ export default function ProfileScreen() {
   const [leaderboardCategory, setLeaderboardCategory] = useState<LeaderboardCategory>('streak');
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [leaderboardLoading, setLeaderboardLoading] = useState(true);
-  const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'progress' | 'achievements'>('progress');
+  const achievementsOpen = activeTab === 'achievements';
   const [editingExamDate, setEditingExamDate] = useState(false);
   const [examDay, setExamDay] = useState('');
   const [examMonth, setExamMonth] = useState('');
   const [examYear, setExamYear] = useState('');
   const [examDateError, setExamDateError] = useState<string | null>(null);
   const [savingExamDate, setSavingExamDate] = useState(false);
+
+  const MENU_ITEMS: {
+    id: string;
+    label: string;
+    desc: string;
+    icon: string;
+    onPress: () => void;
+    color?: string;
+    isPremiumUpgrade?: boolean;
+  }[] = [
+    {
+      id: 'wheel',
+      label: 'Çark Çevir',
+      desc: 'Haftalık premium şansını dene',
+      icon: 'clover',
+      onPress: () => setWheelOpen(true),
+    },
+    {
+      id: 'gift',
+      label: 'Arkadaşına Hediye Et',
+      desc: 'Premium hediye et veya kod kullan',
+      icon: 'gift',
+      onPress: () => router.push('/gift'),
+    },
+    {
+      id: 'word-bank',
+      label: 'Kelime Bankam',
+      desc: 'Kaydettiğin tüm akademik kelimeler',
+      icon: 'book-open-variant',
+      onPress: () => router.push('/word-bank'),
+    },
+    {
+      id: 'dictionary',
+      label: 'Sözlük',
+      desc: 'Akademik kelimeler sözlüğü',
+      icon: 'book-multiple',
+      onPress: () => router.push('/dictionary'),
+    },
+    {
+      id: 'level-test',
+      label: 'Seviyeni Yükselt',
+      desc: 'CEFR seviye sınavını tekrar çöz',
+      icon: 'school',
+      onPress: () => router.push({ pathname: '/level-test', params: { mode: 'retake' } }),
+    },
+  ];
 
   useEffect(() => {
     if (!user) return;
@@ -214,12 +263,17 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!achievementsOpen) return;
-    setLeaderboardLoading(true);
+    const timer = setTimeout(() => {
+      setLeaderboardLoading(true);
+    }, 0);
     const unsubscribe = subscribeToLeaderboard(leaderboardCategory, 10, (entries) => {
       setLeaderboard(entries);
       setLeaderboardLoading(false);
     });
-    return unsubscribe;
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [leaderboardCategory, achievementsOpen]);
 
   const refreshWheelState = useCallback(() => {
@@ -228,7 +282,10 @@ export default function ProfileScreen() {
   }, [user]);
 
   useEffect(() => {
-    refreshWheelState();
+    const timer = setTimeout(() => {
+      refreshWheelState();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [refreshWheelState]);
 
   const displayName = userProfile?.displayName || user?.displayName || user?.email?.split('@')[0] || 'Kullanıcı';
@@ -361,9 +418,24 @@ export default function ProfileScreen() {
         <ThemedView type="bgCard" style={[styles.headerCard, { borderColor: theme.border }]}>
           <View style={styles.headerRow}>
             {photoURL ? (
-              <Image source={{ uri: photoURL }} style={styles.avatar} />
+              <Image
+                source={{ uri: photoURL }}
+                style={[
+                  styles.avatar,
+                  { borderWidth: 2, borderColor: isPremium ? theme.accent : 'transparent' },
+                ]}
+              />
             ) : (
-              <View style={[styles.avatarFallback, { backgroundColor: theme.bgElevated }]}>
+              <View
+                style={[
+                  styles.avatarFallback,
+                  {
+                    backgroundColor: theme.bgElevated,
+                    borderWidth: 2,
+                    borderColor: isPremium ? theme.accent : theme.border,
+                  },
+                ]}
+              >
                 <ThemedText type="subtitle" themeColor="accent">
                   {displayName.charAt(0).toUpperCase()}
                 </ThemedText>
@@ -379,463 +451,542 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View
-            style={[
-              styles.roleBadge,
+          <View style={styles.badgeRow}>
+            <View
+              style={[
+                styles.roleBadge,
+                {
+                  backgroundColor: isPremium ? 'rgba(226, 183, 20, 0.12)' : theme.bgElevated,
+                  borderColor: isPremium ? theme.accent : theme.border,
+                },
+              ]}
+            >
+              <ThemedText type="smallBold" themeColor={isPremium ? 'accent' : 'textMuted'}>
+                {roleLabel[role] ?? roleLabel.free}
+                {isAdmin ? ' · Admin' : ''}
+              </ThemedText>
+            </View>
+
+            {userProfile?.level ? (
+              <View style={[styles.levelBadge, { borderColor: theme.border, backgroundColor: theme.bgElevated }]}>
+                <ThemedText type="smallBold" themeColor="accent">
+                  {userProfile.level} Seviyesi
+                </ThemedText>
+              </View>
+            ) : null}
+          </View>
+        </ThemedView>
+
+        <View style={[styles.segmentedControl, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+          <Pressable
+            onPress={() => setActiveTab('progress')}
+            style={({ pressed }) => [
+              styles.segmentedButton,
               {
-                backgroundColor: isPremium ? theme.accent : theme.bgElevated,
-                borderColor: isPremium ? theme.accent : theme.border,
+                backgroundColor: activeTab === 'progress' ? theme.bgCard : 'transparent',
+                transform: [{ scale: pressed ? 0.98 : 1 }],
               },
             ]}
           >
-            <ThemedText type="smallBold" themeColor={isPremium ? 'bg' : 'textMuted'}>
-              {roleLabel[role] ?? roleLabel.free}
-              {isAdmin ? ' · Admin' : ''}
-            </ThemedText>
-          </View>
-
-          {userProfile?.level ? (
-            <View style={[styles.levelBadge, { borderColor: theme.border, backgroundColor: theme.bgElevated }]}>
-              <ThemedText type="smallBold" themeColor="accent">
-                Seviye: {userProfile.level}
-              </ThemedText>
-            </View>
-          ) : null}
-        </ThemedView>
-
-        <ThemedView type="bgCard" style={[styles.statsCard, { borderColor: theme.border }]}>
-          <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
-            İstatistikler
-          </ThemedText>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <ThemedText type="title" themeColor="accent" style={styles.statValue}>
-                {stats?.streak ?? 0}
-              </ThemedText>
-              <ThemedText themeColor="textMuted" type="small">
-                Gün Serisi
-              </ThemedText>
-            </View>
-            <View style={styles.statItem}>
-              <ThemedText type="title" themeColor="accent" style={styles.statValue}>
-                {stats?.dailyMinutes ?? 0}
-              </ThemedText>
-              <ThemedText themeColor="textMuted" type="small">
-                Bugün (dk)
-              </ThemedText>
-            </View>
-            <View style={styles.statItem}>
-              <ThemedText type="title" themeColor="accent" style={styles.statValue}>
-                {accuracy !== null ? `%${accuracy}` : '—'}
-              </ThemedText>
-              <ThemedText themeColor="textMuted" type="small">
-                Doğruluk
-              </ThemedText>
-            </View>
-          </View>
-        </ThemedView>
-
-        <Pressable
-          onPress={() => router.push('/word-bank')}
-          style={({ pressed }) => [
-            styles.statsCard,
-            { borderColor: theme.border, backgroundColor: theme.bgCard, opacity: pressed ? 0.7 : 1 },
-          ]}
-        >
-          <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
-            Kelime Bankası Dağılımı
-          </ThemedText>
-          {wordCount === 0 ? (
-            <ThemedText themeColor="textMuted" type="small">
-              Henüz kelime bankana kelime eklemedin.
-            </ThemedText>
-          ) : (
-            <>
-              <View style={[styles.srsBar, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
-                {srsNew > 0 ? (
-                  <View style={[styles.srsBarSegment, { flexGrow: srsNew, backgroundColor: theme.border }]} />
-                ) : null}
-                {srsLearning > 0 ? (
-                  <View
-                    style={[styles.srsBarSegment, { flexGrow: srsLearning, backgroundColor: theme.academicWord }]}
-                  />
-                ) : null}
-                {srsMastered > 0 ? (
-                  <View style={[styles.srsBarSegment, { flexGrow: srsMastered, backgroundColor: theme.savedWord }]} />
-                ) : null}
-              </View>
-              <View style={styles.srsLegendRow}>
-                <View style={styles.srsLegendItem}>
-                  <View style={[styles.srsLegendDot, { backgroundColor: theme.border }]} />
-                  <ThemedText themeColor="textMuted" type="small">
-                    Yeni: {srsNew}
-                  </ThemedText>
-                </View>
-                <View style={styles.srsLegendItem}>
-                  <View style={[styles.srsLegendDot, { backgroundColor: theme.academicWord }]} />
-                  <ThemedText themeColor="textMuted" type="small">
-                    Öğreniliyor: {srsLearning}
-                  </ThemedText>
-                </View>
-                <View style={styles.srsLegendItem}>
-                  <View style={[styles.srsLegendDot, { backgroundColor: theme.savedWord }]} />
-                  <ThemedText themeColor="textMuted" type="small">
-                    Ustalaşıldı: {srsMastered}
-                  </ThemedText>
-                </View>
-              </View>
-            </>
-          )}
-        </Pressable>
-
-        <ThemedView type="bgCard" style={[styles.examCard, { borderColor: theme.border }]}>
-          {!editingExamDate && userProfile?.examDate ? (
-            (() => {
-              const days = daysUntil(userProfile.examDate);
-              return (
-                <>
-                  <View style={styles.examHeaderRow}>
-                    <ThemedText type="smallBold" themeColor="textMuted">
-                      Sınav Geri Sayımı
-                    </ThemedText>
-                    <Pressable onPress={openExamDateEditor} hitSlop={8}>
-                      <ThemedText type="small" themeColor="accent">
-                        Değiştir
-                      </ThemedText>
-                    </Pressable>
-                  </View>
-                  <ThemedText type="title" themeColor="accent" style={styles.examDays}>
-                    {days >= 0 ? `Sınava ${days} gün kaldı` : 'Sınav tarihi geçti'}
-                  </ThemedText>
-                  <ThemedText themeColor="textMuted" type="small">
-                    {examTip(days)}
-                  </ThemedText>
-                </>
-              );
-            })()
-          ) : !editingExamDate ? (
-            <Pressable onPress={openExamDateEditor} style={styles.examPrompt}>
-              <ThemedText type="smallBold">Sınav tarihini belirle</ThemedText>
-              <ThemedText themeColor="textMuted" type="small">
-                Geri sayım ve çalışma temposu önerisi için sınav tarihini gir
-              </ThemedText>
-            </Pressable>
-          ) : (
-            <View style={styles.examEditor}>
-              <ThemedText type="smallBold" themeColor="textMuted">
-                Sınav Tarihi
-              </ThemedText>
-              <View style={styles.examInputRow}>
-                <TextInput
-                  value={examDay}
-                  onChangeText={setExamDay}
-                  placeholder="Gün"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  style={[styles.examInput, { borderColor: theme.border, color: theme.text }]}
-                />
-                <TextInput
-                  value={examMonth}
-                  onChangeText={setExamMonth}
-                  placeholder="Ay"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                  style={[styles.examInput, { borderColor: theme.border, color: theme.text }]}
-                />
-                <TextInput
-                  value={examYear}
-                  onChangeText={setExamYear}
-                  placeholder="Yıl"
-                  placeholderTextColor={theme.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  style={[styles.examInput, styles.examYearInput, { borderColor: theme.border, color: theme.text }]}
-                />
-              </View>
-              {examDateError ? (
-                <ThemedText themeColor="error" type="small">
-                  {examDateError}
-                </ThemedText>
-              ) : null}
-              <View style={styles.examEditorActions}>
-                <Pressable
-                  onPress={handleSaveExamDate}
-                  disabled={savingExamDate}
-                  style={[styles.examSaveButton, { backgroundColor: theme.accent, opacity: savingExamDate ? 0.7 : 1 }]}
-                >
-                  <ThemedText type="smallBold" themeColor="bg">
-                    {savingExamDate ? 'Kaydediliyor…' : 'Kaydet'}
-                  </ThemedText>
-                </Pressable>
-                {userProfile?.examDate ? (
-                  <Pressable onPress={() => setEditingExamDate(false)} hitSlop={8}>
-                    <ThemedText type="small" themeColor="textMuted">
-                      Vazgeç
-                    </ThemedText>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          )}
-        </ThemedView>
-
-        {userProfile?.dailyGoalMinutes ? (
-          <ThemedView type="bgCard" style={[styles.goalCard, { borderColor: theme.border }]}>
-            <View style={styles.rowBetween}>
-              <ThemedText type="smallBold" themeColor="textMuted">
-                Günlük Hedef
-              </ThemedText>
-              <ThemedText type="smallBold" themeColor="accent">
-                {Math.min(stats?.dailyMinutes ?? 0, userProfile.dailyGoalMinutes)}/{userProfile.dailyGoalMinutes} dk
-              </ThemedText>
-            </View>
-            <View style={[styles.goalBarTrack, { backgroundColor: theme.bgElevated }]}>
-              <View
-                style={[
-                  styles.goalBarFill,
-                  {
-                    backgroundColor: theme.accent,
-                    width: `${Math.min(100, Math.round(((stats?.dailyMinutes ?? 0) / userProfile.dailyGoalMinutes) * 100))}%`,
-                  },
-                ]}
-              />
-            </View>
-          </ThemedView>
-        ) : (
-          <Pressable
-            onPress={() => router.push('/settings')}
-            style={[styles.goalHint, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText themeColor="textMuted" type="small">
-              Ayarlar&apos;dan günlük çalışma hedefi belirle
-            </ThemedText>
-          </Pressable>
-        )}
-
-        <ThemedView type="bgCard" style={[styles.statsCard, { borderColor: theme.border }]}>
-          <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
-            Zaman İçinde İlerleme (Son 7 Gün)
-          </ThemedText>
-          <ProgressChart entries={dailyStats} />
-        </ThemedView>
-
-        <View style={styles.actionRow}>
-          <Pressable
-            onPress={() => setWheelOpen(true)}
-            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent">
-              Çark Çevir
-            </ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              Haftalık 1/3/7 gün premium şansı
+            <ThemedText type="smallBold" themeColor={activeTab === 'progress' ? 'accent' : 'textMuted'}>
+              İlerleme
             </ThemedText>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/gift')}
-            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+            onPress={() => setActiveTab('achievements')}
+            style={({ pressed }) => [
+              styles.segmentedButton,
+              {
+                backgroundColor: activeTab === 'achievements' ? theme.bgCard : 'transparent',
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              },
+            ]}
           >
-            <ThemedText type="smallBold" themeColor="accent">
-              Arkadaşına Hediye Et
-            </ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              Premium hediye et veya kod kullan
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/dictionary')}
-            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent">
-              Sözlük
-            </ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              Akademik sözlükte ara
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push('/word-bank')}
-            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent">
-              Kelime Bankam
-            </ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              Eklediğin tüm kelimeler
-            </ThemedText>
-          </Pressable>
-          <Pressable
-            onPress={() => router.push({ pathname: '/level-test', params: { mode: 'retake' } })}
-            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent">
-              Seviyeni Yükselt
-            </ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              CEFR seviye sınavını tekrar çöz
-            </ThemedText>
-          </Pressable>
-          {!isPremium && (
-            <Pressable
-              onPress={() => router.push('/premium')}
-              style={[styles.actionCard, { borderColor: theme.accent, backgroundColor: theme.bgCard }]}
-            >
-              <ThemedText type="smallBold" themeColor="accent">
-                Premium&apos;a Yükselt
-              </ThemedText>
-              <ThemedText themeColor="textMuted" type="small">
-                Play Store üzerinden abone ol
-              </ThemedText>
-            </Pressable>
-          )}
-          <Pressable
-            onPress={handleShareWeeklySummary}
-            style={[styles.actionCard, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-          >
-            <ThemedText type="smallBold" themeColor="accent">
-              Haftalık Özeti Paylaş
-            </ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              Bu haftaki ilerlemeni paylaş
+            <ThemedText type="smallBold" themeColor={activeTab === 'achievements' ? 'accent' : 'textMuted'}>
+              Rozetler & Sıralama
             </ThemedText>
           </Pressable>
         </View>
 
-        <Pressable
-          onPress={() => setAchievementsOpen((value) => !value)}
-          style={[styles.achievementsToggle, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
-        >
-          <View style={styles.achievementsToggleText}>
-            <ThemedText type="smallBold">Rozetler ve Liderlik Tablosu</ThemedText>
-            <ThemedText themeColor="textMuted" type="small">
-              {unlockedBadgeCount}/{BADGES.length} rozet kazanıldı
-            </ThemedText>
-          </View>
-          <ThemedText type="subtitle" themeColor="accent">
-            {achievementsOpen ? '−' : '+'}
-          </ThemedText>
-        </Pressable>
-
-        {achievementsOpen ? (
-          <View style={styles.achievementsSection}>
-            {badgeCategories.map((category) => (
-              <View key={category} style={styles.categorySection}>
-                <ThemedText type="smallBold" themeColor="textMuted" style={styles.categoryTitle}>
-                  {category.toUpperCase()}
+        {activeTab === 'progress' ? (
+          <View style={styles.tabContentContainer}>
+            <View style={styles.ringsRow}>
+              {/* Gösterge 1: Süre */}
+              <View style={[styles.ringCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                <View style={styles.ringWrapper}>
+                  <Svg width={100} height={100}>
+                    <Circle
+                      cx={50}
+                      cy={50}
+                      r={42}
+                      stroke={theme.bgElevated}
+                      strokeWidth={8}
+                      fill="transparent"
+                    />
+                    <Circle
+                      cx={50}
+                      cy={50}
+                      r={42}
+                      stroke={theme.accent}
+                      strokeWidth={8}
+                      fill="transparent"
+                      strokeDasharray={2 * Math.PI * 42}
+                      strokeDashoffset={2 * Math.PI * 42 * (1 - Math.min(1, (stats?.dailyMinutes ?? 0) / (userProfile?.dailyGoalMinutes || 30)))}
+                      strokeLinecap="round"
+                      transform="rotate(-90 50 50)"
+                    />
+                  </Svg>
+                  <View style={styles.ringCenterText}>
+                    <ThemedText type="smallBold" style={styles.ringValueText}>
+                      {stats?.dailyMinutes ?? 0}
+                    </ThemedText>
+                    <ThemedText themeColor="textMuted" style={styles.ringLabelSubText}>
+                      /{userProfile?.dailyGoalMinutes || 30} dk
+                    </ThemedText>
+                  </View>
+                </View>
+                <ThemedText type="smallBold" themeColor="textMuted" style={styles.ringCardTitle}>
+                  Günlük Hedef
                 </ThemedText>
-                {BADGES.filter((b) => b.category === category).map((badge) => {
-                  const unlocked = badge.isUnlocked(badgeCtx);
-                  return (
-                    <ThemedView
-                      key={badge.id}
-                      type="bgCard"
-                      style={[
-                        styles.badgeCard,
-                        { borderColor: unlocked ? theme.accent : theme.border, opacity: unlocked ? 1 : 0.55 },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.badgeIcon,
-                          { backgroundColor: theme.bgElevated, borderColor: unlocked ? theme.accent : theme.border },
-                        ]}
-                      >
-                        <ThemedText type="subtitle" themeColor={unlocked ? 'accent' : 'textMuted'}>
-                          {unlocked ? '★' : '?'}
-                        </ThemedText>
-                      </View>
-                      <View style={styles.badgeInfo}>
-                        <ThemedText type="smallBold">{badge.title}</ThemedText>
-                        <ThemedText themeColor="textMuted" type="small" style={styles.badgeDesc}>
-                          {badge.description}
-                        </ThemedText>
-                        {unlocked ? (
-                          <ThemedText type="small" themeColor="accent" style={styles.badgeUnlockedTag}>
-                            Kazanıldı
-                          </ThemedText>
-                        ) : null}
-                      </View>
-                    </ThemedView>
-                  );
-                })}
               </View>
-            ))}
 
-            <View style={styles.leaderboardSection}>
-              <ThemedText type="subtitle" style={styles.title}>
-                Liderlik Tablosu
-              </ThemedText>
+              {/* Gösterge 2: Seri */}
+              <View style={[styles.ringCard, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+                <View style={styles.ringWrapper}>
+                  <Svg width={100} height={100}>
+                    <Circle
+                      cx={50}
+                      cy={50}
+                      r={42}
+                      stroke={theme.bgElevated}
+                      strokeWidth={8}
+                      fill="transparent"
+                    />
+                    <Circle
+                      cx={50}
+                      cy={50}
+                      r={42}
+                      stroke={theme.accent}
+                      strokeWidth={8}
+                      fill="transparent"
+                      strokeDasharray={2 * Math.PI * 42}
+                      strokeDashoffset={2 * Math.PI * 42 * (1 - Math.min(1, (stats?.streak ?? 0) / 7))}
+                      strokeLinecap="round"
+                      transform="rotate(-90 50 50)"
+                    />
+                  </Svg>
+                  <View style={styles.ringCenterText}>
+                    <ThemedText type="smallBold" style={styles.ringValueText}>
+                      {stats?.streak ?? 0}
+                    </ThemedText>
+                    <ThemedText themeColor="textMuted" style={styles.ringLabelSubText}>
+                      Gün
+                    </ThemedText>
+                  </View>
+                </View>
+                <ThemedText type="smallBold" themeColor="textMuted" style={styles.ringCardTitle}>
+                  Gün Serisi
+                </ThemedText>
+              </View>
+            </View>
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoryChipsRow}
-                style={styles.categoryChipsScroll}
-              >
-                {LEADERBOARD_CATEGORIES.map((cat) => {
-                  const active = cat.id === leaderboardCategory;
-                  return (
-                    <ThemedText
-                      key={cat.id}
-                      type="smallBold"
-                      themeColor={active ? 'bg' : 'textMuted'}
-                      onPress={() => setLeaderboardCategory(cat.id)}
-                      style={[
-                        styles.categoryChip,
+            <View style={[styles.menuGroup, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+              {(!isPremium ? [
+                {
+                  id: 'premium',
+                  label: "Premium'a Yükselt",
+                  desc: 'Sınırsız AI ve reklamsız deneyim',
+                  icon: 'crown',
+                  color: theme.accent,
+                  onPress: () => router.push('/premium'),
+                  isPremiumUpgrade: true,
+                },
+                ...MENU_ITEMS
+              ] : MENU_ITEMS).map((item, idx, arr) => {
+                const isLast = idx === arr.length - 1;
+                return (
+                  <View key={item.id}>
+                    <Pressable
+                      onPress={item.onPress}
+                      style={({ pressed }) => [
+                        styles.menuItem,
                         {
-                          backgroundColor: active ? theme.accent : theme.bgCard,
-                          borderColor: active ? theme.accent : theme.border,
+                          backgroundColor: pressed ? theme.bgElevated : 'transparent',
                         },
                       ]}
                     >
-                      {cat.label}
-                    </ThemedText>
-                  );
-                })}
-              </ScrollView>
-
-              {leaderboardLoading ? (
-                <ActivityIndicator color={theme.accent} style={styles.leaderboardLoading} />
-              ) : leaderboard.length === 0 ? (
-                <ThemedText themeColor="textMuted" style={styles.leaderboardEmpty}>
-                  Bu kategoride henüz veri yok.
-                </ThemedText>
-              ) : (
-                leaderboard.map((entry, idx) => (
-                  <ThemedView
-                    key={entry.id}
-                    type="bgCard"
-                    style={[
-                      styles.leaderRow,
-                      { borderColor: entry.id === user?.uid ? theme.accent : theme.border },
-                    ]}
-                  >
-                    <ThemedText type="smallBold" themeColor="textMuted" style={styles.leaderRank}>
-                      {idx + 1}
-                    </ThemedText>
-                    {entry.photoURL ? (
-                      <Image source={{ uri: entry.photoURL }} style={styles.leaderAvatar} />
-                    ) : (
-                      <View style={[styles.leaderAvatarFallback, { backgroundColor: theme.bgElevated }]}>
-                        <ThemedText type="smallBold" themeColor="accent">
-                          {(entry.displayName || '?').charAt(0).toUpperCase()}
+                      <View style={[styles.menuItemIconBg, { backgroundColor: item.isPremiumUpgrade ? 'rgba(226,183,20,0.12)' : theme.bgElevated }]}>
+                        <MaterialCommunityIcons name={item.icon as any} size={20} color={item.color || theme.textMuted} />
+                      </View>
+                      <View style={styles.menuItemTextContainer}>
+                        <ThemedText type="smallBold" themeColor={item.isPremiumUpgrade ? 'accent' : 'text'}>
+                          {item.label}
+                        </ThemedText>
+                        <ThemedText themeColor="textMuted" type="small" style={styles.menuItemDesc}>
+                          {item.desc}
                         </ThemedText>
                       </View>
-                    )}
-                    <ThemedText type="smallBold" style={styles.leaderName} numberOfLines={1}>
-                      {entry.displayName || 'Gizli Kullanıcı'}
-                    </ThemedText>
-                    <ThemedText type="smallBold" themeColor="accent">
-                      {scoreLabel(leaderboardCategory, entry)}
-                    </ThemedText>
-                  </ThemedView>
-                ))
+                      <MaterialCommunityIcons name="chevron-right" size={20} color={theme.textMuted} />
+                    </Pressable>
+                    {!isLast && <View style={[styles.menuDivider, { backgroundColor: theme.border }]} />}
+                  </View>
+                );
+              })}
+            </View>
+
+            <ThemedView type="bgCard" style={[styles.statsCard, { borderColor: theme.border }]}>
+              <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
+                İstatistik Özetleri
+              </ThemedText>
+              <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                  <ThemedText type="title" themeColor="accent" style={styles.statValue}>
+                    {accuracy !== null ? `%${accuracy}` : '—'}
+                  </ThemedText>
+                  <ThemedText themeColor="textMuted" type="small">
+                    Doğruluk
+                  </ThemedText>
+                </View>
+                <View style={styles.statItem}>
+                  <ThemedText type="title" themeColor="accent" style={styles.statValue}>
+                    {totalMinutes}
+                  </ThemedText>
+                  <ThemedText themeColor="textMuted" type="small">
+                    Toplam Süre (dk)
+                  </ThemedText>
+                </View>
+              </View>
+            </ThemedView>
+
+            <ThemedView type="bgCard" style={[styles.statsCard, { borderColor: theme.border }]}>
+              <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
+                Zaman İçinde İlerleme (Son 7 Gün)
+              </ThemedText>
+              <ProgressChart entries={dailyStats} />
+            </ThemedView>
+
+            <Pressable
+              onPress={() => router.push('/word-bank')}
+              style={({ pressed }) => [
+                styles.statsCard,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.bgCard,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+            >
+              <ThemedText type="smallBold" themeColor="textMuted" style={styles.statsTitle}>
+                Kelime Bankası Dağılımı
+              </ThemedText>
+              {wordCount === 0 ? (
+                <ThemedText themeColor="textMuted" type="small">
+                  Henüz kelime bankana kelime eklemedin.
+                </ThemedText>
+              ) : (
+                <>
+                  <View style={[styles.srsBar, { backgroundColor: theme.bgElevated, borderColor: theme.border }]}>
+                    {srsNew > 0 ? (
+                      <View style={[styles.srsBarSegment, { flexGrow: srsNew, backgroundColor: theme.border, marginRight: 2 }]} />
+                    ) : null}
+                    {srsLearning > 0 ? (
+                      <View
+                        style={[styles.srsBarSegment, { flexGrow: srsLearning, backgroundColor: theme.academicWord, marginRight: 2 }]}
+                      />
+                    ) : null}
+                    {srsMastered > 0 ? (
+                      <View style={[styles.srsBarSegment, { flexGrow: srsMastered, backgroundColor: theme.savedWord }]} />
+                    ) : null}
+                  </View>
+                  <View style={styles.srsLegendRow}>
+                    <View style={styles.srsLegendItem}>
+                      <View style={[styles.srsLegendDot, { backgroundColor: theme.border }]} />
+                      <ThemedText themeColor="textMuted" type="small">
+                        Yeni: {srsNew}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.srsLegendItem}>
+                      <View style={[styles.srsLegendDot, { backgroundColor: theme.academicWord }]} />
+                      <ThemedText themeColor="textMuted" type="small">
+                        Öğreniliyor: {srsLearning}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.srsLegendItem}>
+                      <View style={[styles.srsLegendDot, { backgroundColor: theme.savedWord }]} />
+                      <ThemedText themeColor="textMuted" type="small">
+                        Ustalaşıldı: {srsMastered}
+                      </ThemedText>
+                    </View>
+                  </View>
+                </>
               )}
+            </Pressable>
+
+            <ThemedView type="bgCard" style={[styles.examCard, { borderColor: theme.border }]}>
+              {!editingExamDate && userProfile?.examDate ? (
+                (() => {
+                  const days = daysUntil(userProfile.examDate);
+                  return (
+                    <>
+                      <View style={styles.examHeaderRow}>
+                        <ThemedText type="smallBold" themeColor="textMuted">
+                          Sınav Geri Sayımı
+                        </ThemedText>
+                        <Pressable onPress={openExamDateEditor} hitSlop={8}>
+                          <ThemedText type="small" themeColor="accent">
+                            Değiştir
+                          </ThemedText>
+                        </Pressable>
+                      </View>
+                      <ThemedText type="title" themeColor="accent" style={styles.examDays}>
+                        {days >= 0 ? `Sınava ${days} gün kaldı` : 'Sınav tarihi geçti'}
+                      </ThemedText>
+                      <ThemedText themeColor="textMuted" type="small">
+                        {examTip(days)}
+                      </ThemedText>
+                    </>
+                  );
+                })()
+              ) : !editingExamDate ? (
+                <Pressable onPress={openExamDateEditor} style={styles.examPrompt}>
+                  <ThemedText type="smallBold">Sınav tarihini belirle</ThemedText>
+                  <ThemedText themeColor="textMuted" type="small">
+                    Geri sayım ve çalışma temposu önerisi için sınav tarihini gir
+                  </ThemedText>
+                </Pressable>
+              ) : (
+                <View style={styles.examEditor}>
+                  <ThemedText type="smallBold" themeColor="textMuted">
+                    Sınav Tarihi
+                  </ThemedText>
+                  <View style={styles.examInputRow}>
+                    <TextInput
+                      value={examDay}
+                      onChangeText={setExamDay}
+                      placeholder="Gün"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={[styles.examInput, { borderColor: theme.border, color: theme.text }]}
+                    />
+                    <TextInput
+                      value={examMonth}
+                      onChangeText={setExamMonth}
+                      placeholder="Ay"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={[styles.examInput, { borderColor: theme.border, color: theme.text }]}
+                    />
+                    <TextInput
+                      value={examYear}
+                      onChangeText={setExamYear}
+                      placeholder="Yıl"
+                      placeholderTextColor={theme.textMuted}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                      style={[styles.examInput, styles.examYearInput, { borderColor: theme.border, color: theme.text }]}
+                    />
+                  </View>
+                  {examDateError ? (
+                    <ThemedText themeColor="error" type="small">
+                      {examDateError}
+                    </ThemedText>
+                  ) : null}
+                  <View style={styles.examEditorActions}>
+                    <Pressable
+                      onPress={handleSaveExamDate}
+                      disabled={savingExamDate}
+                      style={[styles.examSaveButton, { backgroundColor: theme.accent, opacity: savingExamDate ? 0.7 : 1 }]}
+                    >
+                      <ThemedText type="smallBold" themeColor="bg">
+                        {savingExamDate ? 'Kaydediliyor…' : 'Kaydet'}
+                      </ThemedText>
+                    </Pressable>
+                    {userProfile?.examDate ? (
+                      <Pressable onPress={() => setEditingExamDate(false)} hitSlop={8}>
+                        <ThemedText type="small" themeColor="textMuted">
+                          Vazgeç
+                        </ThemedText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              )}
+            </ThemedView>
+
+            {userProfile?.dailyGoalMinutes ? (
+              <ThemedView type="bgCard" style={[styles.goalCard, { borderColor: theme.border }]}>
+                <View style={styles.rowBetween}>
+                  <ThemedText type="smallBold" themeColor="textMuted">
+                    Günlük Hedef
+                  </ThemedText>
+                  <ThemedText type="smallBold" themeColor="accent">
+                    {Math.min(stats?.dailyMinutes ?? 0, userProfile.dailyGoalMinutes)}/{userProfile.dailyGoalMinutes} dk
+                  </ThemedText>
+                </View>
+                <View style={[styles.goalBarTrack, { backgroundColor: theme.bgElevated }]}>
+                  <View
+                    style={[
+                      styles.goalBarFill,
+                      {
+                        backgroundColor: theme.accent,
+                        width: `${Math.min(100, Math.round(((stats?.dailyMinutes ?? 0) / userProfile.dailyGoalMinutes) * 100))}%`,
+                      },
+                    ]}
+                  />
+                </View>
+              </ThemedView>
+            ) : (
+              <Pressable
+                onPress={() => router.push('/settings')}
+                style={[styles.goalHint, { borderColor: theme.border, backgroundColor: theme.bgCard }]}
+              >
+                <ThemedText themeColor="textMuted" type="small">
+                  Ayarlar&apos;dan günlük çalışma hedefi belirle
+                </ThemedText>
+              </Pressable>
+            )}
+
+            <Pressable
+              onPress={handleShareWeeklySummary}
+              style={({ pressed }) => [
+                styles.shareSummaryButton,
+                {
+                  borderColor: theme.accent,
+                  backgroundColor: 'rgba(226, 183, 20, 0.08)',
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+            >
+              <ThemedText type="smallBold" themeColor="accent">
+                Haftalık İlerleme Özetini Paylaş
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.tabContentContainer}>
+            <View style={styles.achievementsSection}>
+              <ThemedText type="smallBold" themeColor="accent" style={styles.badgeSummaryText}>
+                Kazanılan Rozetler: {unlockedBadgeCount}/{BADGES.length}
+              </ThemedText>
+              {badgeCategories.map((category) => (
+                <View key={category} style={styles.categorySection}>
+                  <ThemedText type="smallBold" themeColor="textMuted" style={styles.categoryTitle}>
+                    {category.toUpperCase()}
+                  </ThemedText>
+                  {BADGES.filter((b) => b.category === category).map((badge) => {
+                    const unlocked = badge.isUnlocked(badgeCtx);
+                    return (
+                      <ThemedView
+                        key={badge.id}
+                        type="bgCard"
+                        style={[
+                          styles.badgeCard,
+                          { borderColor: unlocked ? theme.accent : theme.border, opacity: unlocked ? 1 : 0.55 },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.badgeIcon,
+                            { backgroundColor: theme.bgElevated, borderColor: unlocked ? theme.accent : theme.border },
+                          ]}
+                        >
+                          <ThemedText type="subtitle" themeColor={unlocked ? 'accent' : 'textMuted'}>
+                            {unlocked ? '★' : '?'}
+                          </ThemedText>
+                        </View>
+                        <View style={styles.badgeInfo}>
+                          <ThemedText type="smallBold">{badge.title}</ThemedText>
+                          <ThemedText themeColor="textMuted" type="small" style={styles.badgeDesc}>
+                            {badge.description}
+                          </ThemedText>
+                          {unlocked ? (
+                            <ThemedText type="small" themeColor="accent" style={styles.badgeUnlockedTag}>
+                              Kazanıldı
+                            </ThemedText>
+                          ) : null}
+                        </View>
+                      </ThemedView>
+                    );
+                  })}
+                </View>
+              ))}
+
+              <View style={styles.leaderboardSection}>
+                <ThemedText type="subtitle" style={styles.title}>
+                  Liderlik Tablosu
+                </ThemedText>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryChipsRow}
+                  style={styles.categoryChipsScroll}
+                >
+                  {LEADERBOARD_CATEGORIES.map((cat) => {
+                    const active = cat.id === leaderboardCategory;
+                    return (
+                      <ThemedText
+                        key={cat.id}
+                        type="smallBold"
+                        themeColor={active ? 'bg' : 'textMuted'}
+                        onPress={() => setLeaderboardCategory(cat.id)}
+                        style={[
+                          styles.categoryChip,
+                          {
+                            backgroundColor: active ? theme.accent : theme.bgCard,
+                            borderColor: active ? theme.accent : theme.border,
+                          },
+                        ]}
+                      >
+                        {cat.label}
+                      </ThemedText>
+                    );
+                  })}
+                </ScrollView>
+
+                {leaderboardLoading ? (
+                  <ActivityIndicator color={theme.accent} style={styles.leaderboardLoading} />
+                ) : leaderboard.length === 0 ? (
+                  <ThemedText themeColor="textMuted" style={styles.leaderboardEmpty}>
+                    Bu kategoride henüz veri yok.
+                  </ThemedText>
+                ) : (
+                  leaderboard.map((entry, idx) => (
+                    <ThemedView
+                      key={entry.id}
+                      type="bgCard"
+                      style={[
+                        styles.leaderRow,
+                        { borderColor: entry.id === user?.uid ? theme.accent : theme.border },
+                      ]}
+                    >
+                      <ThemedText type="smallBold" themeColor="textMuted" style={styles.leaderRank}>
+                        {idx + 1}
+                      </ThemedText>
+                      {entry.photoURL ? (
+                        <Image source={{ uri: entry.photoURL }} style={styles.leaderAvatar} />
+                      ) : (
+                        <View style={[styles.leaderAvatarFallback, { backgroundColor: theme.bgElevated }]}>
+                          <ThemedText type="smallBold" themeColor="accent">
+                            {(entry.displayName || '?').charAt(0).toUpperCase()}
+                          </ThemedText>
+                        </View>
+                      )}
+                      <ThemedText type="smallBold" style={styles.leaderName} numberOfLines={1}>
+                        {entry.displayName || 'Gizli Kullanıcı'}
+                      </ThemedText>
+                      <ThemedText type="smallBold" themeColor="accent">
+                        {scoreLabel(leaderboardCategory, entry)}
+                      </ThemedText>
+                    </ThemedView>
+                  ))
+                )}
+              </View>
             </View>
           </View>
-        ) : null}
+        )}
 
         {error ? (
           <ThemedText themeColor="error" style={styles.error}>
@@ -857,22 +1008,14 @@ export default function ProfileScreen() {
         </Pressable>
         </ScrollView>
       </SafeAreaView>
-
-      <SpinWheelModal
-        visible={wheelOpen}
-        onClose={() => setWheelOpen(false)}
-        wheelState={wheelState}
-        onWheelStateChange={refreshWheelState}
-      />
+      <SpinWheelModal visible={wheelOpen} onClose={() => setWheelOpen(false)} wheelState={wheelState} onWheelStateChange={refreshWheelState} />
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
@@ -893,8 +1036,8 @@ const styles = StyleSheet.create({
   settingsIcon: { fontSize: 18, lineHeight: 20 },
   headerCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: Spacing.three,
+    borderRadius: 16,
+    padding: Spacing.four,
     gap: Spacing.three,
   },
   headerRow: {
@@ -912,6 +1055,11 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, gap: Spacing.half },
   name: { fontWeight: '800' },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
   roleBadge: {
     alignSelf: 'flex-start',
     borderWidth: StyleSheet.hairlineWidth,
@@ -926,16 +1074,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
+  segmentedControl: {
+    flexDirection: 'row',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+    padding: 3,
+    marginVertical: Spacing.one,
+  },
+  segmentedButton: {
+    flex: 1,
+    borderRadius: 11,
+    paddingVertical: Spacing.two - 2,
+    alignItems: 'center',
+  },
+  tabContentContainer: {
+    gap: Spacing.three,
+  },
+  ringsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.three,
+  },
+  ringCard: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    padding: Spacing.three,
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  ringWrapper: {
+    position: 'relative',
+    width: 100,
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringCenterText: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringValueText: {
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  ringLabelSubText: {
+    fontSize: 10,
+    marginTop: -2,
+  },
+  ringCardTitle: {
+    fontSize: 12,
+  },
+  menuGroup: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.three,
+    gap: Spacing.three,
+  },
+  menuItemIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItemTextContainer: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  menuItemDesc: {
+    fontSize: 11,
+  },
+  menuDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: Spacing.three * 2 + 36,
+  },
   statsCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: Spacing.three,
   },
   statsTitle: { marginBottom: Spacing.two },
   srsBar: {
     flexDirection: 'row',
-    height: 10,
-    borderRadius: 6,
+    height: 12,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
@@ -953,7 +1182,7 @@ const styles = StyleSheet.create({
   statValue: { fontWeight: '900' },
   examCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: Spacing.three,
     gap: Spacing.one,
   },
@@ -982,32 +1211,30 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   goalCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: Spacing.three,
     gap: Spacing.two,
   },
   goalBarTrack: {
-    height: 8,
-    borderRadius: 4,
+    height: 12,
+    borderRadius: 6,
     overflow: 'hidden',
   },
   goalBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 6,
   },
   goalHint: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: Spacing.three,
   },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  actionCard: {
-    flexBasis: '47%',
-    flexGrow: 1,
+  shareSummaryButton: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
-    padding: Spacing.three,
-    gap: Spacing.half,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+    marginTop: Spacing.two,
   },
   logoutButton: {
     marginTop: Spacing.two,
@@ -1017,23 +1244,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
   },
-  achievementsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: Spacing.three,
-  },
-  achievementsToggleText: { gap: Spacing.half },
   achievementsSection: { gap: Spacing.two },
+  badgeSummaryText: { fontSize: 13, marginBottom: Spacing.one },
   categorySection: { marginBottom: Spacing.four },
   categoryTitle: { marginBottom: Spacing.two },
   badgeCard: {
     flexDirection: 'row',
     gap: Spacing.three,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: Spacing.three,
     marginBottom: Spacing.two,
   },
@@ -1065,7 +1284,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: Spacing.two + 2,
     marginBottom: Spacing.two,
   },

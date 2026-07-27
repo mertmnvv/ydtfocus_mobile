@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { Animated, Easing, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { SpinWheelGraphic } from '@/components/spin-wheel-graphic';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { landingAngleForDays } from '@/constants/spin-wheel';
 import { useAuth } from '@/context/auth-context';
@@ -28,8 +28,8 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
   const [resultVisible, setResultVisible] = useState(false);
   const [claimState, setClaimState] = useState<'idle' | 'saving' | 'gifted'>('idle');
   const [giftCode, setGiftCode] = useState<string | null>(null);
-  const reveal = useRef(new Animated.Value(0)).current;
-  const rotationAnim = useRef(new Animated.Value(0)).current;
+  const [reveal] = useState(() => new Animated.Value(0));
+  const [rotationAnim] = useState(() => new Animated.Value(0));
   const currentRotationRef = useRef(0);
 
   const rotate = rotationAnim.interpolate({
@@ -139,7 +139,21 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={[styles.card, { backgroundColor: theme.bgCard, borderColor: theme.border }]}>
+        <Pressable
+          style={[
+            styles.card,
+            {
+              backgroundColor: 'rgba(26, 26, 26, 0.88)',
+              borderColor: theme.accent,
+              borderWidth: 1.5,
+              shadowColor: theme.accent,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.3,
+              shadowRadius: 15,
+              elevation: 8,
+            },
+          ]}
+        >
           <ThemedText type="subtitle" themeColor="accent" style={styles.title}>
             Çark Çevir
           </ThemedText>
@@ -149,16 +163,19 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
           {!resultVisible && (
             <>
               <ThemedText themeColor="textMuted" style={styles.subtitle}>
-                Haftada 1 ücretsiz çevirme hakkın var. 1/3/7 gün premium
-                kazanabilirsin.
+                Haftada 1 ücretsiz çevirme hakkın var. 1/3/7 gün premium kazanabilirsin.
               </ThemedText>
 
               <Pressable
                 onPress={handleFreeSpin}
                 disabled={!freeAvailable || spinning}
-                style={[
+                style={({ pressed }) => [
                   styles.spinButton,
-                  { backgroundColor: theme.accent, opacity: !freeAvailable || spinning ? 0.5 : 1 },
+                  {
+                    backgroundColor: theme.accent,
+                    opacity: !freeAvailable || spinning ? 0.5 : 1,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                  },
                 ]}
               >
                 <ThemedText type="smallBold" themeColor="bg">
@@ -170,9 +187,14 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
                 <Pressable
                   onPress={handleAdSpin}
                   disabled={!adAvailable || adLoading || spinning}
-                  style={[
+                  style={({ pressed }) => [
                     styles.adButton,
-                    { borderColor: theme.border, opacity: !adAvailable || adLoading || spinning ? 0.5 : 1 },
+                    {
+                      borderColor: theme.accent,
+                      borderWidth: 1.5,
+                      opacity: !adAvailable || adLoading || spinning ? 0.5 : 1,
+                      transform: [{ scale: pressed ? 0.96 : 1 }],
+                    },
                   ]}
                 >
                   <ThemedText type="smallBold" themeColor="accent">
@@ -189,12 +211,24 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
 
           {resultVisible && prize && (
             <Animated.View style={[styles.resultBox, { opacity: reveal, transform: [{ scale: reveal }] }]}>
+              {/* Parlayan altın hediye paketi / kupa ikonu */}
+              <MaterialCommunityIcons name={prize.days > 0 ? 'gift' : 'emoticon-sad-outline'} size={48} color={theme.accent} style={{ marginBottom: Spacing.one }} />
+              
               <ThemedText type="title" themeColor="accent" style={styles.resultLabel}>
                 {prize.label}
               </ThemedText>
 
               {prize.days === 0 ? (
-                <Pressable onPress={resetForNextSpin} style={[styles.spinButton, { backgroundColor: theme.accent }]}>
+                <Pressable
+                  onPress={resetForNextSpin}
+                  style={({ pressed }) => [
+                    styles.spinButton,
+                    {
+                      backgroundColor: theme.accent,
+                      transform: [{ scale: pressed ? 0.96 : 1 }],
+                    },
+                  ]}
+                >
                   <ThemedText type="smallBold" themeColor="bg">
                     Tamam
                   </ThemedText>
@@ -204,10 +238,19 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
                   <ThemedText themeColor="textMuted" style={styles.subtitle}>
                     Hediye kodu oluşturuldu ve paylaşıldı:
                   </ThemedText>
-                  <ThemedText type="smallBold" themeColor="accent">
+                  <ThemedText type="title" themeColor="accent" style={{ marginVertical: Spacing.two, letterSpacing: 1.5, fontWeight: '900' }}>
                     {giftCode}
                   </ThemedText>
-                  <Pressable onPress={onClose} style={[styles.spinButton, { backgroundColor: theme.accent }]}>
+                  <Pressable
+                    onPress={onClose}
+                    style={({ pressed }) => [
+                      styles.spinButton,
+                      {
+                        backgroundColor: theme.accent,
+                        transform: [{ scale: pressed ? 0.96 : 1 }],
+                      },
+                    ]}
+                  >
                     <ThemedText type="smallBold" themeColor="bg">
                       Kapat
                     </ThemedText>
@@ -218,19 +261,35 @@ export function SpinWheelModal({ visible, onClose, wheelState, onWheelStateChang
                   <Pressable
                     onPress={handleUseForSelf}
                     disabled={claimState === 'saving'}
-                    style={[styles.choiceButton, { backgroundColor: theme.accent, opacity: claimState === 'saving' ? 0.6 : 1 }]}
+                    style={({ pressed }) => [
+                      styles.choiceButton,
+                      {
+                        backgroundColor: theme.accent,
+                        opacity: claimState === 'saving' ? 0.6 : 1,
+                        transform: [{ scale: pressed ? 0.96 : 1 }],
+                      },
+                    ]}
                   >
                     <ThemedText type="smallBold" themeColor="bg">
-                      Kendime Kullan
+                      {claimState === 'saving' ? 'Yükleniyor…' : 'Kendime Kullan'}
                     </ThemedText>
                   </Pressable>
                   <Pressable
                     onPress={handleGiftToFriend}
                     disabled={claimState === 'saving'}
-                    style={[styles.choiceButton, { borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border, opacity: claimState === 'saving' ? 0.6 : 1 }]}
+                    style={({ pressed }) => [
+                      styles.choiceButton,
+                      {
+                        borderWidth: 1.5,
+                        borderColor: theme.accent,
+                        backgroundColor: 'transparent',
+                        opacity: claimState === 'saving' ? 0.6 : 1,
+                        transform: [{ scale: pressed ? 0.96 : 1 }],
+                      },
+                    ]}
                   >
                     <ThemedText type="smallBold" themeColor="accent">
-                      Arkadaşıma Hediye Et
+                      {claimState === 'saving' ? 'Oluşturuluyor…' : 'Arkadaşıma Hediye'}
                     </ThemedText>
                   </Pressable>
                 </View>

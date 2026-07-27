@@ -68,6 +68,10 @@ export function lookupWord(word: string) {
   return postJson<WordLookup>('/api/translate', { word });
 }
 
+export function translatePassage(text: string) {
+  return postJson<{ tr: string }>('/api/translate-passage', { text });
+}
+
 // Ses dosyasını ham ArrayBuffer olarak döner — RN'de çalma stratejisi
 // (dosyaya yazıp expo-av/expo-audio ile oynatma) Reading ekranı işine ait.
 export async function fetchSpeechAudio(text: string, voice?: string): Promise<ArrayBuffer> {
@@ -189,7 +193,7 @@ export async function fetchAiPassage(topic: string, level: ReadingLevel): Promis
   return {
     title: parsed.title,
     text: parsed.en,
-    tr: parsed.tr,
+    tr: parsed.tr || '',
     trTitle: '',
     thumbnail: '',
     url: '',

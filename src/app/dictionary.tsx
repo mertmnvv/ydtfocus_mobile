@@ -41,7 +41,10 @@ export default function DictionaryScreen() {
   );
 
   useEffect(() => {
-    load(level, null);
+    const timer = setTimeout(() => {
+      load(level, null);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [level, load]);
 
   useEffect(() => {

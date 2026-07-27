@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -32,7 +32,7 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
   const [tally, setTally] = useState({ correct: 0, wrong: 0 });
   const [streak, setStreak] = useState(0);
   const [lastCorrect, setLastCorrect] = useState<boolean | null>(null);
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
 
   const current = words[index];
   const options = useMemo<QuizOption[]>(() => {
@@ -58,25 +58,31 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
     }).start();
 
     const newLevel = isCorrect ? Math.min(4, (current.level || 0) + 1) : 0;
-    const nextReview = Date.now() + LEVEL_INTERVALS[newLevel] * 86400000;
+    const nextReview = new Date().getTime() + LEVEL_INTERVALS[newLevel] * 86400000;
 
-    await updateUserWord(user.uid, current.id, {
+    updateUserWord(user.uid, current.id, {
       level: newLevel,
       nextReview,
       correctCount: (current.correctCount || 0) + (isCorrect ? 1 : 0),
       wrongCount: (current.wrongCount || 0) + (isCorrect ? 0 : 1),
-    });
+    }).catch((err) => console.error('Error updating user word:', err));
 
     if (mistakesMode) {
-      if (isCorrect) await removeMistake(user.uid, current.id);
+      if (isCorrect) {
+        removeMistake(user.uid, current.id).catch((err) =>
+          console.error('Error removing mistake:', err)
+        );
+      }
     } else if (!isCorrect) {
-      await addMistake(user.uid, current.id);
+      addMistake(user.uid, current.id).catch((err) =>
+        console.error('Error adding mistake:', err)
+      );
     }
 
-    setTally((prev) => ({
-      correct: prev.correct + (isCorrect ? 1 : 0),
-      wrong: prev.wrong + (isCorrect ? 0 : 1),
-    }));
+    const newCorrect = tally.correct + (isCorrect ? 1 : 0);
+    const newWrong = tally.wrong + (isCorrect ? 0 : 1);
+
+    setTally({ correct: newCorrect, wrong: newWrong });
 
     setTimeout(async () => {
       if (index + 1 < words.length) {
@@ -84,12 +90,13 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
         setSelected(null);
         setLastCorrect(null);
       } else {
-        const final = {
-          correct: tally.correct + (isCorrect ? 1 : 0),
-          wrong: tally.wrong + (isCorrect ? 0 : 1),
-        };
-        await updateUserStats(user.uid, final);
-        await refreshUserStreak(user.uid).catch(() => {});
+        const final = { correct: newCorrect, wrong: newWrong };
+        try {
+          await updateUserStats(user.uid, final);
+          await refreshUserStreak(user.uid).catch(() => {});
+        } catch (err) {
+          console.error('Error updating final stats/streak:', err);
+        }
         onFinish(final);
       }
     }, 700);
@@ -99,12 +106,20 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
 
   return (
     <View style={styles.container}>
-      <ThemedText themeColor="textMuted" type="small" style={styles.progress}>
-        {index + 1} / {words.length}
-      </ThemedText>
-      <ThemedText type="subtitle" style={styles.word}>
-        {current.word}
-      </ThemedText>
+      <View style={styles.progressContainer}>
+        <ThemedText themeColor="textMuted" type="smallBold" style={styles.progressText}>
+          Soru {index + 1} / {words.length}
+        </ThemedText>
+        <View style={[styles.progressTrack, { backgroundColor: theme.bgElevated }]}>
+          <View style={[styles.progressFill, { width: `${((index + 1) / words.length) * 100}%`, backgroundColor: theme.accent }]} />
+        </View>
+      </View>
+
+      <ThemedView type="bgCard" style={[styles.wordCard, { borderColor: theme.border }]}>
+        <ThemedText style={styles.word}>
+          {current.word}
+        </ThemedText>
+      </ThemedView>
 
       <View style={styles.feedbackSlot}>
         {lastCorrect !== null && (
@@ -113,7 +128,7 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
             type="smallBold"
             style={styles.feedbackText}
           >
-            {lastCorrect ? 'Doğru!' : `Yanlış, doğrusu: ${current.translation}`}
+            {lastCorrect ? 'Harika, Doğru!' : `Yanlış, doğrusu: ${current.translation}`}
           </ThemedText>
         )}
       </View>
@@ -138,7 +153,14 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
               <Pressable
                 onPress={() => handleAnswer(option)}
                 disabled={selected !== null}
-                style={[styles.optionButton, { backgroundColor: bg, borderColor: theme.border }]}
+                style={({ pressed }) => [
+                  styles.optionButton,
+                  {
+                    backgroundColor: bg,
+                    borderColor: theme.border,
+                    transform: [{ scale: pressed && !showCorrectness ? 0.98 : 1 }],
+                  },
+                ]}
               >
                 <ThemedText
                   type="smallBold"
@@ -155,16 +177,20 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
 
       <ThemedView type="bgCard" style={[styles.tallyBox, { borderColor: theme.border }]}>
         <View style={styles.tallyRow}>
-          <ThemedText themeColor="accent" type="smallBold">
-            Doğru: {tally.correct}
-          </ThemedText>
-          <ThemedText themeColor="error" type="smallBold">
-            Yanlış: {tally.wrong}
-          </ThemedText>
+          <View style={styles.tallyItem}>
+            <ThemedText themeColor="accent" type="smallBold">
+              Doğru: {tally.correct}
+            </ThemedText>
+          </View>
+          <View style={styles.tallyItem}>
+            <ThemedText themeColor="error" type="smallBold">
+              Yanlış: {tally.wrong}
+            </ThemedText>
+          </View>
         </View>
         {streak >= 3 && (
           <ThemedText themeColor="accent" type="small" style={styles.streakText}>
-            Seri: {streak}
+            🔥 Seri: {streak}
           </ThemedText>
         )}
       </ThemedView>
@@ -174,25 +200,39 @@ export function WordQuiz({ words, mistakesMode, onFinish }: Props) {
 
 const styles = StyleSheet.create({
   container: { gap: Spacing.three, width: '100%' },
-  progress: { textAlign: 'center' },
-  word: { textAlign: 'center', fontWeight: '800' },
-  feedbackSlot: { minHeight: 20, justifyContent: 'center' },
-  feedbackText: { textAlign: 'center' },
+  progressContainer: { gap: Spacing.one },
+  progressText: { textAlign: 'center', fontSize: 13 },
+  progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 3 },
+  wordCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    paddingVertical: Spacing.five,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: Spacing.one,
+  },
+  word: { fontSize: 24, fontWeight: '900', textAlign: 'center' },
+  feedbackSlot: { minHeight: 24, justifyContent: 'center' },
+  feedbackText: { textAlign: 'center', fontSize: 13 },
   options: { gap: Spacing.two },
   optionButton: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingVertical: Spacing.two + 2,
-    paddingHorizontal: Spacing.three,
+    borderRadius: 12,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.four,
     alignItems: 'center',
   },
-  optionText: { textAlign: 'center' },
+  optionText: { textAlign: 'center', fontSize: 15 },
   tallyBox: {
-    gap: Spacing.one,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    padding: Spacing.two,
+    borderRadius: 16,
+    padding: Spacing.three,
+    alignItems: 'center',
+    gap: Spacing.two,
+    marginTop: Spacing.two,
   },
-  tallyRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  streakText: { textAlign: 'center' },
+  tallyRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-around' },
+  tallyItem: { alignItems: 'center' },
+  streakText: { textAlign: 'center', fontWeight: '800' },
 });

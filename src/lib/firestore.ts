@@ -13,7 +13,6 @@ import {
   orderBy,
   query,
   type QueryConstraint,
-  runTransaction,
   serverTimestamp,
   setDoc,
   startAfter,
@@ -166,10 +165,21 @@ export async function refreshUserStreak(uid: string) {
 
   streak = lastDate === yesterday ? streak + 1 : 1;
 
-  await updateDoc(statsRef, { streak, lastDate: today });
+  // updateDoc yerine merge'li setDoc — statsRef getUserStats hiç
+  // çağrılmadan (ör. ilk gün doğrudan quiz/okuma akışından) buraya
+  // gelirse döküman henüz yok olabilir, updateDoc bu durumda
+  // "No document to update" hatasıyla patlıyordu.
+  await setDoc(statsRef, {
+    streak,
+    lastDate: today,
+    dailyMinutes: 0,
+    correct: 0,
+    wrong: 0,
+  }, { merge: true });
   await updateDoc(userRef, {
     'publicStats.streak': streak,
     'publicStats.lastSeen': serverTimestamp(),
+    'publicStats.dailyMinutes': 0,
   });
 
   return streak;
@@ -195,15 +205,21 @@ export async function incrementStudyMinutes(uid: string, minutes: number) {
     weeklyMinutes += minutes;
   }
 
-  const dailyMinutes = data.lastDate !== today ? minutes : (data.dailyMinutes || 0) + minutes;
+  const isNewDay = data.lastDate !== today;
+  const dailyMinutes = isNewDay ? minutes : (data.dailyMinutes || 0) + minutes;
 
-  await updateDoc(statsRef, {
-    dailyMinutes,
-    weeklyMinutes,
-    weeklyReadings,
-    lastWeekNumber: weekNumber,
-    lastDate: today,
-  });
+  await setDoc(
+    statsRef,
+    {
+      dailyMinutes,
+      weeklyMinutes,
+      weeklyReadings,
+      lastWeekNumber: weekNumber,
+      lastDate: today,
+      ...(isNewDay ? { correct: 0, wrong: 0 } : {}),
+    },
+    { merge: true },
+  );
 
   await updateDoc(userRef, {
     'publicStats.totalMinutes': increment(minutes),
@@ -228,7 +244,7 @@ export async function completeReadingPassage(uid: string) {
   const data = snap.exists() ? (snap.data() as UserStats) : ({} as Partial<UserStats>);
   const weeklyReadings = data.lastWeekNumber === weekNumber ? (data.weeklyReadings || 0) + 1 : 1;
 
-  await updateDoc(statsRef, { weeklyReadings, lastWeekNumber: weekNumber });
+  await setDoc(statsRef, { weeklyReadings, lastWeekNumber: weekNumber }, { merge: true });
   await updateDoc(userRef, {
     'publicStats.weeklyReadings': weeklyReadings,
     'publicStats.lastWeekNumber': weekNumber,
@@ -240,10 +256,14 @@ export async function completeReadingPassage(uid: string) {
 // quiz'inden değil, bkz. araştırma notu).
 export async function updateUserStats(uid: string, delta: { correct: number; wrong: number }) {
   const statsRef = doc(db, 'users', uid, 'data', 'stats');
-  await updateDoc(statsRef, {
-    correct: increment(delta.correct),
-    wrong: increment(delta.wrong),
-  });
+  await setDoc(
+    statsRef,
+    {
+      correct: increment(delta.correct),
+      wrong: increment(delta.wrong),
+    },
+    { merge: true },
+  );
 }
 
 // ===== Zaman İçinde İlerleme (günlük anlık görüntü) =====

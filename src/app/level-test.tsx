@@ -35,8 +35,6 @@ export default function LevelTestScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    setError(false);
     fetchLevelTestQuestions()
       .then((qs) => setQuestions(qs))
       .catch(() => setError(true))

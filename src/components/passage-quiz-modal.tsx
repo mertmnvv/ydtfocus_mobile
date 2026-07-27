@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Modal,
   Pressable,
@@ -32,16 +33,7 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [completed, setCompleted] = useState(false);
-  const scalesRef = useRef<Map<number, Animated.Value>>(new Map());
-
-  function getScale(qIdx: number) {
-    let value = scalesRef.current.get(qIdx);
-    if (!value) {
-      value = new Animated.Value(1);
-      scalesRef.current.set(qIdx, value);
-    }
-    return value;
-  }
+  const [scales, setScales] = useState<Animated.Value[]>([]);
 
   const answeredCount = Object.keys(answers).length;
   const correctCount = questions.reduce(
@@ -52,16 +44,22 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    setLoading(true);
-    setError(null);
-    setQuestions([]);
-    setAnswers({});
-    setCompleted(false);
-    scalesRef.current.clear();
-    fetchReadingQuiz(passageText)
-      .then(setQuestions)
-      .catch(() => setError('Quiz oluşturulamadı, tekrar dene.'))
-      .finally(() => setLoading(false));
+    const timer = setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      setQuestions([]);
+      setAnswers({});
+      setCompleted(false);
+      setScales([]);
+      fetchReadingQuiz(passageText)
+        .then((qs) => {
+          setQuestions(qs);
+          setScales(qs.map(() => new Animated.Value(1)));
+        })
+        .catch(() => setError('Quiz oluşturulamadı, tekrar dene.'))
+        .finally(() => setLoading(false));
+    }, 0);
+    return () => clearTimeout(timer);
   }, [visible, passageText]);
 
   useEffect(() => {
@@ -70,23 +68,42 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
     if (!allAnswered) return;
     const allCorrect = questions.every((q, idx) => answers[idx] === q.correct);
     if (allCorrect && user) {
-      setCompleted(true);
-      completeReadingPassage(user.uid).catch(() => {});
+      const timer = setTimeout(() => {
+        setCompleted(true);
+        completeReadingPassage(user.uid).catch(() => {});
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [answers, questions, completed, user]);
+
+  useEffect(() => {
+    if (questions.length > 0 && answeredCount === questions.length) {
+      const timer = setTimeout(() => {
+        onClose();
+        Alert.alert(
+          'Quiz Tamamlandı!',
+          `Tebrikler! Quizi ${correctCount} doğru ve ${questions.length - correctCount} yanlış ile tamamladın.`,
+          [{ text: 'Tamam', style: 'default' }]
+        );
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [answeredCount, questions.length, correctCount, onClose]);
 
   function handleSelect(qIdx: number, key: string) {
     if (answers[qIdx]) return;
     setAnswers((prev) => ({ ...prev, [qIdx]: key }));
     const isCorrect = key === questions[qIdx]?.correct;
-    const scale = getScale(qIdx);
-    scale.setValue(isCorrect ? 0.92 : 1);
-    Animated.spring(scale, {
-      toValue: 1,
-      friction: 4,
-      tension: 60,
-      useNativeDriver: true,
-    }).start();
+    const scale = scales[qIdx];
+    if (scale) {
+      scale.setValue(isCorrect ? 0.92 : 1);
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 4,
+        tension: 60,
+        useNativeDriver: true,
+      }).start();
+    }
   }
 
   return (
@@ -142,10 +159,11 @@ export function PassageQuizModal({ visible, passageText, onClose }: Props) {
                         ? theme.error
                         : theme.bgElevated;
                   const animateThis = answered && (isCorrectKey || isSelected);
+                  const scale = scales[qIdx];
                   return (
                     <Animated.View
                       key={key}
-                      style={animateThis ? { transform: [{ scale: getScale(qIdx) }] } : undefined}
+                      style={animateThis && scale ? { transform: [{ scale }] } : undefined}
                     >
                       <Pressable
                         onPress={() => handleSelect(qIdx, key)}

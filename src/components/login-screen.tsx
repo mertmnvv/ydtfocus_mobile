@@ -14,6 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useAuth } from '@/context/auth-context';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { LegalModal } from './legal-modal';
 
 type Mode = 'login' | 'register';
 
@@ -52,6 +53,8 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [legalVisible, setLegalVisible] = useState(false);
+  const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'kvkk'>('privacy');
 
   const isRegister = mode === 'register';
 
@@ -197,6 +200,28 @@ export function LoginScreen() {
               </ThemedText>
             </ThemedText>
           </Pressable>
+
+          {/* Hukuki Belgeler Bağlantıları */}
+          <ThemedView style={styles.legalLinksRow}>
+            <Pressable onPress={() => { setLegalTab('terms'); setLegalVisible(true); }}>
+              <ThemedText themeColor="textMuted" type="small" style={styles.legalLinkText}>Kullanım Koşulları</ThemedText>
+            </Pressable>
+            <ThemedText themeColor="textMuted" type="small"> · </ThemedText>
+            <Pressable onPress={() => { setLegalTab('privacy'); setLegalVisible(true); }}>
+              <ThemedText themeColor="textMuted" type="small" style={styles.legalLinkText}>Gizlilik Politikası</ThemedText>
+            </Pressable>
+            <ThemedText themeColor="textMuted" type="small"> · </ThemedText>
+            <Pressable onPress={() => { setLegalTab('kvkk'); setLegalVisible(true); }}>
+              <ThemedText themeColor="textMuted" type="small" style={styles.legalLinkText}>KVKK</ThemedText>
+            </Pressable>
+          </ThemedView>
+
+          <LegalModal
+            key={legalVisible ? legalTab : 'closed'}
+            visible={legalVisible}
+            onClose={() => setLegalVisible(false)}
+            initialTab={legalTab}
+          />
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ThemedView>
@@ -268,5 +293,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two + 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.four,
+    backgroundColor: 'transparent',
+  },
+  legalLinkText: {
+    textDecorationLine: 'underline',
   },
 });

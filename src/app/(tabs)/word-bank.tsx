@@ -10,6 +10,7 @@ import { fetchSpeechAudio, lookupWord, type WordLookup } from '@/lib/api';
 import { playTtsAudio } from '@/lib/audio';
 import { deleteUserWord, subscribeToUserWords, type UserWord } from '@/lib/firestore';
 import { useTheme } from '@/hooks/use-theme';
+import { getWordStatus, getWordStatusLabel, getWordStatusColors, type WordStatus } from '@/lib/word-status';
 
 // Kelime Bankam — SRS'te "sırası gelen" kelimelerle sınırlı olan Akıllı
 // Tekrar'ın aksine, users/{uid}/words altındaki TÜM kelimeleri listeler.
@@ -21,6 +22,7 @@ export default function WordBankScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | WordStatus>('all');
 
   const [selectedWord, setSelectedWord] = useState<UserWord | null>(null);
   const [lookup, setLookup] = useState<WordLookup | null>(null);
@@ -28,21 +30,43 @@ export default function WordBankScreen() {
 
   useEffect(() => {
     if (!user) return;
-    setLoading(true);
+    const timer = setTimeout(() => {
+      setLoading(true);
+    }, 0);
     const unsubscribe = subscribeToUserWords(user.uid, (fetched) => {
       setWords(fetched);
       setLoading(false);
     });
-    return unsubscribe;
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [user]);
+
+  const stats = useMemo(() => {
+    let newCount = 0;
+    let learningCount = 0;
+    let masteredCount = 0;
+    words.forEach((w) => {
+      const status = getWordStatus(w.level ?? 0);
+      if (status === 'new') newCount++;
+      else if (status === 'learning') learningCount++;
+      else if (status === 'mastered') masteredCount++;
+    });
+    return { newCount, learningCount, masteredCount };
+  }, [words]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return words;
-    return words.filter(
+    let list = words;
+    if (statusFilter !== 'all') {
+      list = words.filter((w) => getWordStatus(w.level ?? 0) === statusFilter);
+    }
+    if (!query) return list;
+    return list.filter(
       (w) => w.word.toLowerCase().includes(query) || w.translation.toLowerCase().includes(query)
     );
-  }, [words, search]);
+  }, [words, search, statusFilter]);
 
   async function handleDelete(wordId: string) {
     if (!user) return;
@@ -93,8 +117,8 @@ export default function WordBankScreen() {
           </ThemedText>
         </View>
 
-        <ThemedText themeColor="textMuted" type="small">
-          {words.length} kelime
+        <ThemedText themeColor="textMuted" type="small" style={styles.statsText}>
+          {`${words.length} kelime  ·  ${stats.newCount} yeni  ·  ${stats.learningCount} öğreniliyor  ·  ${stats.masteredCount} ustalaşıldı`}
         </ThemedText>
 
         <TextInput
@@ -104,6 +128,30 @@ export default function WordBankScreen() {
           placeholderTextColor={theme.textMuted}
           style={[styles.input, { backgroundColor: theme.bgElevated, color: theme.text, borderColor: theme.border }]}
         />
+
+        <View style={styles.filterRow}>
+          {(['all', 'new', 'learning', 'mastered'] as const).map((filter) => {
+            const active = statusFilter === filter;
+            const label = filter === 'all' ? 'Tümü' : filter === 'new' ? 'Yeni' : filter === 'learning' ? 'Öğreniliyor' : 'Ustalaşıldı';
+            return (
+              <Pressable
+                key={filter}
+                onPress={() => setStatusFilter(filter)}
+                style={[
+                  styles.filterChip,
+                  {
+                    backgroundColor: active ? theme.accent : theme.bgCard,
+                    borderColor: active ? theme.accent : theme.border,
+                  },
+                ]}
+              >
+                <ThemedText type="smallBold" themeColor={active ? 'bg' : 'textMuted'}>
+                  {label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
 
         {!loading && words.length === 0 && (
           <ThemedText themeColor="textMuted" style={styles.centerBox}>
@@ -127,6 +175,17 @@ export default function WordBankScreen() {
               <Pressable style={styles.wordInfo} onPress={() => handleWordPress(item)}>
                 <View style={styles.wordRow}>
                   <ThemedText type="smallBold">{item.word}</ThemedText>
+                  {(() => {
+                    const colors = getWordStatusColors(item.level ?? 0, theme);
+                    const label = getWordStatusLabel(item.level ?? 0);
+                    return (
+                      <View style={[styles.statusBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                        <ThemedText style={[styles.statusBadgeText, { color: colors.text }]}>
+                          {label}
+                        </ThemedText>
+                      </View>
+                    );
+                  })()}
                 </View>
                 <ThemedText themeColor="textMuted" type="small">
                   {item.translation}
@@ -170,6 +229,26 @@ export default function WordBankScreen() {
                     {lookup.phonetic}
                   </ThemedText>
                 ) : null}
+
+                <ThemedText type="smallBold" themeColor="accent" style={styles.lookupSectionLabel}>
+                  Öğrenme Durumu
+                </ThemedText>
+                <View style={styles.lookupStatusRow}>
+                  {(() => {
+                    const colors = getWordStatusColors(selectedWord?.level ?? 0, theme);
+                    const label = getWordStatusLabel(selectedWord?.level ?? 0);
+                    return (
+                      <View style={[styles.statusBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                        <ThemedText style={[styles.statusBadgeText, { color: colors.text }]}>
+                          {label}
+                        </ThemedText>
+                      </View>
+                    );
+                  })()}
+                  <ThemedText themeColor="textMuted" type="small" style={styles.lookupLevelText}>
+                    (Tekrar Seviyesi: {selectedWord?.level ?? 0})
+                  </ThemedText>
+                </View>
 
                 <ThemedText type="smallBold" themeColor="accent" style={styles.lookupSectionLabel}>
                   Türkçe
@@ -236,6 +315,37 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.four, gap: Spacing.two },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.one },
   title: { fontWeight: '800' },
+  statsText: { fontSize: 13, marginBottom: Spacing.one },
+  filterRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginVertical: Spacing.one,
+  },
+  filterChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.two + 2,
+    paddingVertical: Spacing.one + 2,
+  },
+  statusBadge: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 6,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+    marginLeft: Spacing.two,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  lookupStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.half,
+  },
+  lookupLevelText: {
+    marginLeft: Spacing.two,
+  },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,

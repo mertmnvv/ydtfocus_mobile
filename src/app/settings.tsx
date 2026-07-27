@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,6 +13,7 @@ import { useAuth } from '@/context/auth-context';
 import { registerForPushNotifications } from '@/lib/notifications';
 import { setDailyGoalMinutes } from '@/lib/firestore';
 import { useTheme } from '@/hooks/use-theme';
+import { LegalModal } from '@/components/legal-modal';
 
 const appearanceLabel: Record<string, string> = {
   light: 'Açık',
@@ -39,6 +41,8 @@ export default function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [goalBusy, setGoalBusy] = useState<number | null>(null);
   const dailyGoalMinutes = userProfile?.dailyGoalMinutes;
+  const [legalVisible, setLegalVisible] = useState(false);
+  const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'kvkk'>('privacy');
 
   async function handleSelectGoal(minutes: number) {
     if (!user) return;
@@ -211,6 +215,35 @@ export default function SettingsScreen() {
           </ThemedView>
 
           <ThemedText type="smallBold" themeColor="textMuted" style={styles.sectionTitle}>
+            HUKUKİ BELGELER
+          </ThemedText>
+          <ThemedView type="bgCard" style={[styles.card, { borderColor: theme.border }]}>
+            <Pressable
+              onPress={() => { setLegalTab('privacy'); setLegalVisible(true); }}
+              style={styles.legalItem}
+            >
+              <ThemedText type="smallBold">Gizlilik Politikası</ThemedText>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={theme.textMuted} />
+            </Pressable>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <Pressable
+              onPress={() => { setLegalTab('terms'); setLegalVisible(true); }}
+              style={styles.legalItem}
+            >
+              <ThemedText type="smallBold">Kullanım Koşulları</ThemedText>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={theme.textMuted} />
+            </Pressable>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <Pressable
+              onPress={() => { setLegalTab('kvkk'); setLegalVisible(true); }}
+              style={styles.legalItem}
+            >
+              <ThemedText type="smallBold">KVKK Aydınlatma Metni</ThemedText>
+              <MaterialCommunityIcons name="chevron-right" size={20} color={theme.textMuted} />
+            </Pressable>
+          </ThemedView>
+
+          <ThemedText type="smallBold" themeColor="textMuted" style={styles.sectionTitle}>
             UYGULAMA
           </ThemedText>
           <ThemedView type="bgCard" style={[styles.card, { borderColor: theme.border }]}>
@@ -240,6 +273,13 @@ export default function SettingsScreen() {
               {loggingOut ? 'Çıkış yapılıyor…' : 'Çıkış Yap'}
             </ThemedText>
           </Pressable>
+
+          <LegalModal
+            key={legalVisible ? legalTab : 'closed'}
+            visible={legalVisible}
+            onClose={() => setLegalVisible(false)}
+            initialTab={legalTab}
+          />
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -305,5 +345,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
+  },
+  legalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.two,
+    width: '100%',
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    width: '100%',
+    marginVertical: Spacing.one,
   },
 });

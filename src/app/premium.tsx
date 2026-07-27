@@ -32,7 +32,7 @@ const PLAN_LABELS: Record<string, string> = {
 // kullanılıyor (bkz. src/lib/iap.ts, TODO.md).
 export default function PremiumScreen() {
   const theme = useTheme();
-  const { user, isPremium } = useAuth();
+  const { isPremium } = useAuth();
   const [products, setProducts] = useState<ProductSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
@@ -97,7 +97,7 @@ export default function PremiumScreen() {
             </ThemedText>
           </Pressable>
           <ThemedText type="subtitle" style={styles.title}>
-            Premium'a Yükselt
+            {"Premium'a Yükselt"}
           </ThemedText>
         </View>
 
@@ -112,8 +112,7 @@ export default function PremiumScreen() {
         {!isPremium && (
           <ThemedView type="bgCard" style={[styles.card, { borderColor: theme.border }]}>
             <ThemedText themeColor="textMuted" style={styles.subtitle}>
-              Sınırsız AI metin üretimi, reklamsız deneyim ve daha fazlası
-              için premium'a yükselt.
+              {"Sınırsız AI metin üretimi, reklamsız deneyim ve daha fazlası için premium'a yükselt."}
             </ThemedText>
 
             {loading && <ActivityIndicator color={theme.accent} style={styles.loader} />}

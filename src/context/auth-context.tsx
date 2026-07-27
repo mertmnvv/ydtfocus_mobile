@@ -124,12 +124,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   }
 
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setNow(Date.now());
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [userProfile]);
+
   // Web'de premiumUntil süresi dolunca role'ü otomatik "free"ye düşüren
   // bir mekanizma yok (PayTR webhook'u sadece rol atarken çalışıyor) —
   // burada en azından UI'da doğru göstermek için süre kontrolü ekleniyor.
   const premiumActive =
     userProfile?.role === 'premium' &&
-    (!userProfile.premiumUntil || premiumUntilMs(userProfile.premiumUntil) > Date.now());
+    (!userProfile.premiumUntil || premiumUntilMs(userProfile.premiumUntil) > now);
   const isPremium = premiumActive || userProfile?.role === 'admin';
   const isAdmin = userProfile?.role === 'admin';
 
